@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: jayabima-backend
+    env: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        value: HRMS_SECURE_TOKEN_2026_JB_INVESTMENTS_99881122
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production

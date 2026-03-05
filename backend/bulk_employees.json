@@ -1,0 +1,170 @@
+[
+    {
+        "name": "DISSANAYAKE MUDIYANSELAGE KRISHANTHA MAITHREE DISSANAYAKE",
+        "email": "KRISHANTHA@jayabima.com",
+        "password": "InitialPassword123!",
+        "role": "Admin",
+        "department": "Board and executive management",
+        "designation": "chairman",
+        "hire_date": "2018-05-18",
+        "nic_passport": "801285392V",
+        "phone": "0717281891",
+        "dob": "1980-05-07",
+        "gender": "Male",
+        "marital_status": "Married",
+        "address": "WIYANA, NEAR THE LEYLAND CENTER, DAMBULLA ROAD",
+        "is_epf_eligible": false,
+        "is_etf_eligible": true,
+        "bank_details": {
+            "bank_name": "BOC",
+            "branch_code": "578",
+            "account_number": "79843362",
+            "account_holder_name": "D M K M DISSANAYAKE"
+        },
+        "emergency_contact": {
+            "name": "H A SENEVIRATNE",
+            "relation": "SIBLING",
+            "phone": "0757128881"
+        }
+    },
+    {
+        "name": "LINDALAGA GEDARA DARSHANA HASITHA LIYANAGE",
+        "email": "HASITHA@jayabima.com",
+        "password": "InitialPassword123!",
+        "role": "HR Manager",
+        "department": "Board and executive management",
+        "designation": "Managing director /ceo",
+        "hire_date": "2018-05-18",
+        "nic_passport": "911851210V",
+        "phone": "0717128889",
+        "dob": "1985-06-01",
+        "gender": "Male",
+        "marital_status": "Married",
+        "address": "No 34, METTA, DABULLA",
+        "is_epf_eligible": false,
+        "is_etf_eligible": true,
+        "bank_details": {
+            "bank_name": "BOC",
+            "branch_code": "578",
+            "account_number": "83575992",
+            "account_holder_name": "L G D H LIYANAGE"
+        },
+        "emergency_contact": {
+            "name": "H A SENEVIRATNE",
+            "relation": "SIBLING",
+            "phone": "0757128881"
+        }
+    },
+    {
+        "name": "HERATH ABEYON UPULI KANCHANA SENEVIRATHNA",
+        "email": "KANCHANA@jayabima.com",
+        "password": "InitialPassword123!",
+        "role": "HR Manager",
+        "department": "Board and executive management",
+        "designation": "deputy ceo /coo",
+        "hire_date": "2018-05-18",
+        "nic_passport": "835723364V",
+        "phone": "0757523121",
+        "dob": "1983-03-12",
+        "gender": "Female",
+        "marital_status": "Married",
+        "address": "WIYANA, NEAR THE LEYLAND CENTER, DAMBULLA ROAD",
+        "is_epf_eligible": false,
+        "is_etf_eligible": true,
+        "bank_details": {
+            "bank_name": "BOC",
+            "branch_code": "578",
+            "account_number": "84852341",
+            "account_holder_name": "H A U K SENEVIRATHNA"
+        },
+        "emergency_contact": {
+            "name": "H A SENEVIRATNE",
+            "relation": "SIBLING",
+            "phone": "0757128881"
+        }
+    },
+    {
+        "name": "NISHSHANKAGE LAHIRU WITHUNGA NISHSHANKA",
+        "email": "LAHIRU@jayabima.com",
+        "password": "InitialPassword123!",
+        "role": "Employee",
+        "department": "credit/lending",
+        "designation": "credit officer /loan officer",
+        "hire_date": "2018-05-18",
+        "nic_passport": "200010080857",
+        "phone": "0715155155",
+        "dob": "2000-01-08",
+        "gender": "Male",
+        "marital_status": "Single",
+        "address": "KIBISSA, SIGIRIYA",
+        "is_epf_eligible": true,
+        "is_etf_eligible": true,
+        "bank_details": {
+            "bank_name": "BOC",
+            "branch_code": "578",
+            "account_number": "82618987",
+            "account_holder_name": "N L W NISHSHANKA"
+        },
+        "emergency_contact": {
+            "name": "H A SENEVIRATNE",
+            "relation": "SIBLING",
+            "phone": "0757128881"
+        }
+    },
+    {
+        "name": "RATHNAYAKA MUDIYANSELAGE PA LIHARADANA GEDARA MAYURI PRIYANGIKA HERATH",
+        "email": "MAYURI@jayabima.com",
+        "password": "InitialPassword123!",
+        "role": "Employee",
+        "department": "finance and accounting",
+        "designation": "cashier",
+        "hire_date": "2018-05-18",
+        "nic_passport": "995420800V",
+        "phone": "0706733221",
+        "dob": "1999-06-07",
+        "gender": "Female",
+        "marital_status": "Married",
+        "address": "NAULA, MATALE",
+        "is_epf_eligible": true,
+        "is_etf_eligible": true,
+        "bank_details": {
+            "bank_name": "BOC",
+            "branch_code": "578",
+            "account_number": "88727415",
+            "account_holder_name": "R M P G M HERATH"
+        },
+        "emergency_contact": {
+            "name": "H A SENEVIRATNE",
+            "relation": "SIBLING",
+            "phone": "0757128881"
+        }
+    },
+    {
+        "name": "SENEVIRATHNA WASALA KAIHANDA KULATHUNGA ADHIKARAMLAGE PRADEEP PRASANNA BANDARA",
+        "email": "PRASANNA@jayabima.com",
+        "password": "InitialPassword123!",
+        "role": "Employee",
+        "department": "credit/lending",
+        "designation": "credit officer /loan officer",
+        "hire_date": "2018-05-18",
+        "nic_passport": "980362710V",
+        "phone": "0715563212",
+        "dob": "1998-05-02",
+        "gender": "Male",
+        "marital_status": "Married",
+        "address": "KANDALAMA, DAMBULLA",
+        "is_epf_eligible": true,
+        "is_etf_eligible": true,
+        "bank_details": {
+            "bank_name": "BOC",
+            "branch_code": "578",
+            "account_number": "89717201",
+            "account_holder_name": "S W K K A P P BANDARA"
+        },
+        "emergency_contact": {
+            "name": "H A SENEVIRATNE",
+            "relation": "SIBLING",
+            "phone": "0757128881"
+        }
+    }
+]

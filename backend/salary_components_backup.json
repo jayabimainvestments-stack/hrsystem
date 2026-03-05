@@ -1,0 +1,156 @@
+[
+  {
+    "id": 6,
+    "name": "Monthly Performance",
+    "type": "Earning",
+    "is_taxable": true,
+    "status": "Active",
+    "created_at": "2026-02-09T04:53:04.006Z",
+    "epf_eligible": false,
+    "etf_eligible": false,
+    "welfare_eligible": false
+  },
+  {
+    "id": 21,
+    "name": "Travelling",
+    "type": "Earning",
+    "is_taxable": true,
+    "status": "Active",
+    "created_at": "2026-02-09T04:53:04.061Z",
+    "epf_eligible": false,
+    "etf_eligible": false,
+    "welfare_eligible": false
+  },
+  {
+    "id": 3,
+    "name": "Budgetary Allowance 1",
+    "type": "Earning",
+    "is_taxable": true,
+    "status": "Active",
+    "created_at": "2026-02-09T04:53:03.992Z",
+    "epf_eligible": true,
+    "etf_eligible": true,
+    "welfare_eligible": true
+  },
+  {
+    "id": 4,
+    "name": "Budgetary Allowance 2",
+    "type": "Earning",
+    "is_taxable": true,
+    "status": "Active",
+    "created_at": "2026-02-09T04:53:03.996Z",
+    "epf_eligible": true,
+    "etf_eligible": true,
+    "welfare_eligible": true
+  },
+  {
+    "id": 129,
+    "name": "Staff Loan Installment",
+    "type": "Deduction",
+    "is_taxable": false,
+    "status": "Active",
+    "created_at": "2026-02-11T09:28:03.432Z",
+    "epf_eligible": false,
+    "etf_eligible": false,
+    "welfare_eligible": false
+  },
+  {
+    "id": 26,
+    "name": "Salary Advance",
+    "type": "Deduction",
+    "is_taxable": false,
+    "status": "Active",
+    "created_at": "2026-02-09T04:53:04.081Z",
+    "epf_eligible": false,
+    "etf_eligible": false,
+    "welfare_eligible": false
+  },
+  {
+    "id": 7,
+    "name": "Welfare",
+    "type": "Deduction",
+    "is_taxable": false,
+    "status": "Active",
+    "created_at": "2026-02-09T04:53:04.010Z",
+    "epf_eligible": false,
+    "etf_eligible": false,
+    "welfare_eligible": false
+  },
+  {
+    "id": 1,
+    "name": "Monthly Fuel",
+    "type": "Earning",
+    "is_taxable": true,
+    "status": "Active",
+    "created_at": "2026-02-07T10:32:59.846Z",
+    "epf_eligible": false,
+    "etf_eligible": false,
+    "welfare_eligible": false
+  },
+  {
+    "id": 23,
+    "name": "Motorcycle Maintenance",
+    "type": "Earning",
+    "is_taxable": true,
+    "status": "Active",
+    "created_at": "2026-02-09T04:53:04.068Z",
+    "epf_eligible": false,
+    "etf_eligible": false,
+    "welfare_eligible": false
+  },
+  {
+    "id": 198,
+    "name": "NOPAY",
+    "type": "Deduction",
+    "is_taxable": false,
+    "status": "Active",
+    "created_at": "2026-02-13T10:45:42.394Z",
+    "epf_eligible": null,
+    "etf_eligible": null,
+    "welfare_eligible": false
+  },
+  {
+    "id": 25,
+    "name": "EPF 8%",
+    "type": "Deduction",
+    "is_taxable": false,
+    "status": "Active",
+    "created_at": "2026-02-09T04:53:04.074Z",
+    "epf_eligible": false,
+    "etf_eligible": false,
+    "welfare_eligible": false
+  },
+  {
+    "id": 199,
+    "name": "Structural Allocations",
+    "type": "Earning",
+    "is_taxable": true,
+    "status": "Active",
+    "created_at": "2026-02-19T04:54:12.631Z",
+    "epf_eligible": false,
+    "etf_eligible": false,
+    "welfare_eligible": false
+  },
+  {
+    "id": 2,
+    "name": "Basic Salary",
+    "type": "Earning",
+    "is_taxable": true,
+    "status": "Inactive",
+    "created_at": "2026-02-09T04:53:03.964Z",
+    "epf_eligible": true,
+    "etf_eligible": true,
+    "welfare_eligible": true
+  },
+  {
+    "id": 5,
+    "name": "Annual Performance",
+    "type": "Earning",
+    "is_taxable": true,
+    "status": "Inactive",
+    "created_at": "2026-02-09T04:53:04.002Z",
+    "epf_eligible": false,
+    "etf_eligible": false,
+    "welfare_eligible": false
+  }
+]

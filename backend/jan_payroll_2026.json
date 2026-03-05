@@ -1,0 +1,68 @@
+{
+    "month": "JANUARY - 2026",
+    "data": [
+        {
+            "email": "KRISHANTHA@jayabima.com",
+            "basic_pay": 26500,
+            "budgetary_allowance_1": 1000,
+            "budgetary_allowance_2": 2500,
+            "annual_performance": 68500,
+            "travelling": 65000,
+            "welfare": 600
+        },
+        {
+            "email": "HASITHA@jayabima.com",
+            "basic_pay": 26500,
+            "budgetary_allowance_1": 1000,
+            "budgetary_allowance_2": 2500,
+            "annual_performance": 34500,
+            "travelling": 85000,
+            "welfare": 600
+        },
+        {
+            "email": "KANCHANA@jayabima.com",
+            "basic_pay": 26500,
+            "budgetary_allowance_1": 1000,
+            "budgetary_allowance_2": 2500,
+            "annual_performance": 38500,
+            "welfare": 600
+        },
+        {
+            "email": "LAHIRU@jayabima.com",
+            "basic_pay": 26500,
+            "budgetary_allowance_1": 1000,
+            "budgetary_allowance_2": 2500,
+            "annual_performance": 25450,
+            "monthly_performance": 7000,
+            "travelling": 9000,
+            "monthly_fuel": 19825,
+            "motorcycle_maintenance": 10000,
+            "salary_advance": 3000,
+            "welfare": 600,
+            "staff_loan": 9600
+        },
+        {
+            "email": "MAYURI@jayabima.com",
+            "basic_pay": 26500,
+            "budgetary_allowance_1": 1000,
+            "budgetary_allowance_2": 2500,
+            "annual_performance": 13450,
+            "monthly_performance": 3000,
+            "travelling": 7000,
+            "welfare": 600
+        },
+        {
+            "email": "PRASANNA@jayabima.com",
+            "basic_pay": 26500,
+            "budgetary_allowance_1": 1000,
+            "budgetary_allowance_2": 2500,
+            "annual_performance": 25450,
+            "monthly_performance": 6000,
+            "travelling": 9000,
+            "monthly_fuel": 19825,
+            "motorcycle_maintenance": 7000,
+            "salary_advance": 5000,
+            "welfare": 600
+        }
+    ]
+}

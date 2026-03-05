@@ -1,0 +1,21 @@
+[
+  {
+    "id": 9,
+    "user_id": 16,
+    "leave_type": "CASUAL LEAVE",
+    "start_date": "2026-02-03T18:30:00.000Z",
+    "end_date": "2026-02-03T18:30:00.000Z",
+    "reason": "Test Leave",
+    "status": "Approved",
+    "approved_by": null,
+    "created_at": "2026-02-15T12:46:19.736Z",
+    "leave_type_id": 11,
+    "no_of_days": "1.0",
+    "is_unpaid": false,
+    "paid_days": "1",
+    "unpaid_days": "0",
+    "short_leave_hours": "0",
+    "start_time": null,
+    "end_time": null
+  }
+]

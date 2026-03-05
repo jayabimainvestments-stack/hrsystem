@@ -1,0 +1,242 @@
+[
+  {
+    "nic": "801285392V",
+    "account_no": "79843362",
+    "month": "2026-01",
+    "basic_salary": 26500,
+    "allowances": [
+      {
+        "name": "Budgetary Allowance 1",
+        "amount": 1000
+      },
+      {
+        "name": "Budgetary Allowance 2",
+        "amount": 2500
+      },
+      {
+        "name": "Annual Performance",
+        "amount": 68500
+      },
+      {
+        "name": "Travelling",
+        "amount": 65000
+      }
+    ],
+    "deductions": [
+      {
+        "name": "Welfare",
+        "amount": 600
+      }
+    ],
+    "epf_8": 0,
+    "etf_3": 900
+  },
+  {
+    "nic": "911851210V",
+    "account_no": "83575992",
+    "month": "2026-01",
+    "basic_salary": 26500,
+    "allowances": [
+      {
+        "name": "Budgetary Allowance 1",
+        "amount": 1000
+      },
+      {
+        "name": "Budgetary Allowance 2",
+        "amount": 2500
+      },
+      {
+        "name": "Annual Performance",
+        "amount": 45500
+      },
+      {
+        "name": "Travelling",
+        "amount": 65000
+      }
+    ],
+    "deductions": [
+      {
+        "name": "Welfare",
+        "amount": 600
+      }
+    ],
+    "epf_8": 0,
+    "etf_3": 900
+  },
+  {
+    "nic": "835723364V",
+    "account_no": "84852341",
+    "month": "2026-01",
+    "basic_salary": 26500,
+    "allowances": [
+      {
+        "name": "Budgetary Allowance 1",
+        "amount": 1000
+      },
+      {
+        "name": "Budgetary Allowance 2",
+        "amount": 2500
+      },
+      {
+        "name": "Annual Performance",
+        "amount": 38500
+      }
+    ],
+    "deductions": [
+      {
+        "name": "Welfare",
+        "amount": 600
+      }
+    ],
+    "epf_8": 0,
+    "etf_3": 900
+  },
+  {
+    "nic": "2000100800857",
+    "account_no": "82618987",
+    "month": "2026-01",
+    "basic_salary": 26500,
+    "allowances": [
+      {
+        "name": "Budgetary Allowance 1",
+        "amount": 1000
+      },
+      {
+        "name": "Budgetary Allowance 2",
+        "amount": 2500
+      },
+      {
+        "name": "Annual Performance",
+        "amount": 25450
+      },
+      {
+        "name": "Monthly Performance",
+        "amount": 7000
+      },
+      {
+        "name": "Travelling",
+        "amount": 9000
+      },
+      {
+        "name": "Monthly fuel",
+        "amount": 19825
+      },
+      {
+        "name": "Motorcycle maintenance",
+        "amount": 10000
+      }
+    ],
+    "deductions": [
+      {
+        "name": "Welfare",
+        "amount": 600
+      },
+      {
+        "name": "BPF 8%",
+        "amount": 2400
+      },
+      {
+        "name": "Salary Advance",
+        "amount": 3000
+      },
+      {
+        "name": "Staff Loan Installment",
+        "amount": 9600
+      }
+    ],
+    "epf_8": 2400,
+    "etf_3": 900
+  },
+  {
+    "nic": "995520800V",
+    "account_no": "88727415",
+    "month": "2026-01",
+    "basic_salary": 26500,
+    "allowances": [
+      {
+        "name": "Budgetary Allowance 1",
+        "amount": 1000
+      },
+      {
+        "name": "Budgetary Allowance 2",
+        "amount": 2500
+      },
+      {
+        "name": "Annual Performance",
+        "amount": 13450
+      },
+      {
+        "name": "Monthly Performance",
+        "amount": 3000
+      },
+      {
+        "name": "Travelling",
+        "amount": 7000
+      }
+    ],
+    "deductions": [
+      {
+        "name": "Welfare",
+        "amount": 600
+      },
+      {
+        "name": "BPF 8%",
+        "amount": 2400
+      }
+    ],
+    "epf_8": 2400,
+    "etf_3": 900
+  },
+  {
+    "nic": "980362710V",
+    "account_no": "81717201",
+    "month": "2026-01",
+    "basic_salary": 26500,
+    "allowances": [
+      {
+        "name": "Budgetary Allowance 1",
+        "amount": 1000
+      },
+      {
+        "name": "Budgetary Allowance 2",
+        "amount": 2500
+      },
+      {
+        "name": "Annual Performance",
+        "amount": 25450
+      },
+      {
+        "name": "Monthly Performance",
+        "amount": 6000
+      },
+      {
+        "name": "Travelling",
+        "amount": 9000
+      },
+      {
+        "name": "Monthly fuel",
+        "amount": 19825
+      },
+      {
+        "name": "Motorcycle maintenance",
+        "amount": 7000
+      }
+    ],
+    "deductions": [
+      {
+        "name": "Welfare",
+        "amount": 600
+      },
+      {
+        "name": "BPF 8%",
+        "amount": 2400
+      },
+      {
+        "name": "Salary Advance",
+        "amount": 5000
+      }
+    ],
+    "epf_8": 2400,
+    "etf_3": 900
+  }
+]

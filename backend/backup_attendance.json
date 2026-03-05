@@ -1,0 +1,34 @@
+[
+  {
+    "id": "4fd786f0-779e-48ec-be00-dffb7ebfe642",
+    "employee_id": 2,
+    "date": "2026-02-05T18:30:00.000Z",
+    "clock_in": "09:30:00",
+    "clock_out": "17:00:00",
+    "status": "Late",
+    "source": "Manual",
+    "created_at": "2026-02-15T12:46:19.771Z",
+    "updated_at": "2026-02-15T12:46:19.771Z",
+    "device_id": null,
+    "raw_punch_time": null,
+    "late_minutes": 60,
+    "short_leave_hours": "0.00",
+    "is_half_day": false
+  },
+  {
+    "id": "a43b04bf-fb2f-48e1-be0d-0f61dd0869f7",
+    "employee_id": 2,
+    "date": "2026-02-04T18:30:00.000Z",
+    "clock_in": null,
+    "clock_out": null,
+    "status": "Absent",
+    "source": "Manual",
+    "created_at": "2026-02-15T12:46:19.767Z",
+    "updated_at": "2026-02-15T12:46:19.767Z",
+    "device_id": null,
+    "raw_punch_time": null,
+    "late_minutes": 0,
+    "short_leave_hours": "0.00",
+    "is_half_day": false
+  }
+]

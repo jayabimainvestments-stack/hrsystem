@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Local Database & Binaries
+pgsql/
+postgresql-15.16-1-windows-x64-binaries.zip
+DATABASE_BACKUP/
+backups/
+*.sql
+!hr_db_final_supabase.sql # Keep the latest reference if small, or ignore all
+
+# Environment Variables
+.env
+backend/.env
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+
+# Backups & Temp files
+*.zip
+*.log
+backup_error.log
+0/ # Internal folder?
+tmp/
+
+# Uploads (moved to cloud storage later)
+uploads/
+backend/uploads/
+
+# Build folders
+frontend/dist/
+frontend/build/
+
+# IDE files
+.vscode/
+.idea/
+*.swp

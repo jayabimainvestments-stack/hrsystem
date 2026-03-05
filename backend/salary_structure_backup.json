@@ -1,0 +1,258 @@
+[
+  {
+    "id": 107,
+    "employee_id": 3,
+    "component_id": 1,
+    "amount": "30000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:21:04.282Z"
+  },
+  {
+    "id": 108,
+    "employee_id": 3,
+    "component_id": 11,
+    "amount": "54500.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:21:04.287Z"
+  },
+  {
+    "id": 109,
+    "employee_id": 3,
+    "component_id": 13,
+    "amount": "65000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:21:04.292Z"
+  },
+  {
+    "id": 110,
+    "employee_id": 3,
+    "component_id": 18,
+    "amount": "600.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:21:04.296Z"
+  },
+  {
+    "id": 111,
+    "employee_id": 4,
+    "component_id": 1,
+    "amount": "30000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:21:16.255Z"
+  },
+  {
+    "id": 112,
+    "employee_id": 4,
+    "component_id": 11,
+    "amount": "38500.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:21:16.258Z"
+  },
+  {
+    "id": 113,
+    "employee_id": 4,
+    "component_id": 18,
+    "amount": "600.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:21:16.261Z"
+  },
+  {
+    "id": 122,
+    "employee_id": 6,
+    "component_id": 1,
+    "amount": "30000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:22:30.938Z"
+  },
+  {
+    "id": 123,
+    "employee_id": 6,
+    "component_id": 11,
+    "amount": "13450.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:22:30.941Z"
+  },
+  {
+    "id": 124,
+    "employee_id": 6,
+    "component_id": 12,
+    "amount": "3000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:22:30.942Z"
+  },
+  {
+    "id": 125,
+    "employee_id": 6,
+    "component_id": 13,
+    "amount": "7000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:22:30.942Z"
+  },
+  {
+    "id": 126,
+    "employee_id": 6,
+    "component_id": 18,
+    "amount": "600.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:22:30.943Z"
+  },
+  {
+    "id": 134,
+    "employee_id": 5,
+    "component_id": 1,
+    "amount": "30000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:17.813Z"
+  },
+  {
+    "id": 135,
+    "employee_id": 5,
+    "component_id": 9,
+    "amount": "9600.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:17.824Z"
+  },
+  {
+    "id": 136,
+    "employee_id": 5,
+    "component_id": 11,
+    "amount": "25450.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:17.825Z"
+  },
+  {
+    "id": 137,
+    "employee_id": 5,
+    "component_id": 12,
+    "amount": "7000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:17.826Z"
+  },
+  {
+    "id": 138,
+    "employee_id": 5,
+    "component_id": 13,
+    "amount": "9000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:17.826Z"
+  },
+  {
+    "id": 139,
+    "employee_id": 5,
+    "component_id": 14,
+    "amount": "19825.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:17.827Z"
+  },
+  {
+    "id": 140,
+    "employee_id": 5,
+    "component_id": 15,
+    "amount": "10000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:17.829Z"
+  },
+  {
+    "id": 141,
+    "employee_id": 5,
+    "component_id": 18,
+    "amount": "600.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:17.830Z"
+  },
+  {
+    "id": 142,
+    "employee_id": 7,
+    "component_id": 1,
+    "amount": "30000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:50.255Z"
+  },
+  {
+    "id": 143,
+    "employee_id": 7,
+    "component_id": 8,
+    "amount": "10000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:50.260Z"
+  },
+  {
+    "id": 144,
+    "employee_id": 7,
+    "component_id": 11,
+    "amount": "25450.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:50.261Z"
+  },
+  {
+    "id": 145,
+    "employee_id": 7,
+    "component_id": 12,
+    "amount": "6000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:50.261Z"
+  },
+  {
+    "id": 146,
+    "employee_id": 7,
+    "component_id": 13,
+    "amount": "9000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:50.263Z"
+  },
+  {
+    "id": 147,
+    "employee_id": 7,
+    "component_id": 14,
+    "amount": "19825.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:50.264Z"
+  },
+  {
+    "id": 148,
+    "employee_id": 7,
+    "component_id": 15,
+    "amount": "7000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:50.265Z"
+  },
+  {
+    "id": 149,
+    "employee_id": 7,
+    "component_id": 18,
+    "amount": "600.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T06:23:50.267Z"
+  },
+  {
+    "id": 154,
+    "employee_id": 2,
+    "component_id": 1,
+    "amount": "30000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T14:23:42.348Z"
+  },
+  {
+    "id": 155,
+    "employee_id": 2,
+    "component_id": 11,
+    "amount": "68500.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T14:23:42.384Z"
+  },
+  {
+    "id": 156,
+    "employee_id": 2,
+    "component_id": 13,
+    "amount": "65000.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T14:23:42.388Z"
+  },
+  {
+    "id": 157,
+    "employee_id": 2,
+    "component_id": 18,
+    "amount": "600.00",
+    "effective_date": "2026-02-14T18:30:00.000Z",
+    "created_at": "2026-02-15T14:23:42.392Z"
+  }
+]
