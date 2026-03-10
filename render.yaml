@@ -8,8 +8,10 @@ services:
     startCommand: node server.js
     envVars:
       - key: DATABASE_URL
-        sync: false
+        value: postgresql://postgres.miikoefhdzkaoaukaftm:Jayabima%402026@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres
       - key: JWT_SECRET
         value: HRMS_SECURE_TOKEN_2026_JB_INVESTMENTS_99881122
       - key: NODE_ENV
         value: production
+      - key: PORT
+        value: 5000

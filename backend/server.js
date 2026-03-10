@@ -8,6 +8,30 @@ const rateLimit = require('express-rate-limit');
 
 const app = express();
 
+// CORS Configuration - allow Vercel frontend and local dev
+const allowedOrigins = [
+    /\.vercel\.app$/,      // All Vercel deployments
+    /^http:\/\/localhost/,  // Local development
+    /^http:\/\/192\.168\./  // LAN access
+];
+
+const corsOptions = {
+    origin: function (origin, callback) {
+        // Allow requests with no origin (mobile apps, curl, Render health checks)
+        if (!origin) return callback(null, true);
+        const allowed = allowedOrigins.some(pattern => pattern.test(origin));
+        if (allowed) {
+            callback(null, true);
+        } else {
+            console.warn(`CORS blocked origin: ${origin}`);
+            callback(null, true); // Allow all for now; tighten after first deploy
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+};
+
 // Rate Limiting
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -20,7 +44,7 @@ const limiter = rateLimit({
 app.use(express.json());
 const path = require('path');
 
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
