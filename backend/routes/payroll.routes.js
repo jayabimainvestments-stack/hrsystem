@@ -29,6 +29,7 @@ router.get('/', protect, checkPermission('MANAGE_PAYROLL'), getAllPayroll);
 router.get('/liabilities', protect, checkPermission('MANAGE_PAYROLL'), getLiabilities);
 router.get('/liabilities/breakdown', protect, checkPermission('MANAGE_PAYROLL'), getLiabilityBreakdown);
 router.post('/liabilities/pay', protect, checkPermission('MANAGE_PAYROLL'), payLiability);
+router.post('/liabilities/:id/approve', protect, checkPermission('MANAGE_PAYROLL'), auditLog('APPROVE_LIABILITY', 'liability'), approveLiability);
 router.post('/:id/pay-statutory', protect, checkPermission('MANAGE_PAYROLL'), payPayrollStatutory);
 router.post('/:id/pay-welfare', protect, checkPermission('MANAGE_PAYROLL'), payWelfare);
 router.get('/:id', protect, getPayrollDetails);

@@ -422,6 +422,12 @@ const createPayroll = async (req, res) => {
                     updated_at = NOW()
                 WHERE id = $1
             `, [inst.loan_id]);
+
+            // Log into loan_payments for history tracking
+            await client.query(`
+                INSERT INTO loan_payments (loan_id, payment_date, amount, type, month, note, created_by)
+                VALUES ($1, CURRENT_DATE, $2, 'payroll', $3, $4, $5)
+            `, [inst.loan_id, inst.amount, datePrefix, `Payroll deduction for ${month} ${processingYear}`, req.user.id]);
         }
 
         // 8. Update Liabilities & Audit Log
@@ -778,15 +784,55 @@ const payLiability = async (req, res) => {
                 payment_date = $3,
                 payment_method = $4,
                 notes = $5,
-                status = CASE 
-                    WHEN (paid_amount + $1) >= total_payable THEN 'Paid'
-                    ELSE 'Partial'
-                END
-            WHERE id = $6
+                status = 'Remitted',
+                remitted_by = $6,
+                remitted_at = CURRENT_TIMESTAMP
+            WHERE id = $7
             RETURNING *
-        `, [amount, payment_ref, payment_date, payment_method, notes, id]);
+        `, [amount, payment_ref, payment_date, payment_method, notes, req.user.id, id]);
 
         if (result.rows.length === 0) return res.status(404).json({ message: 'Liability record not found' });
+
+        res.status(200).json(result.rows[0]);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Approve statutory liability remittance
+// @route   POST /api/payroll/liabilities/:id/approve
+// @access  Private (Admin/Management)
+const approveLiability = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const check = await db.query('SELECT remitted_by, status FROM payroll_liabilities WHERE id = $1', [id]);
+        if (check.rows.length === 0) return res.status(404).json({ message: 'Liability record not found' });
+
+        if (check.rows[0].status !== 'Remitted') {
+            return res.status(400).json({ message: 'Only remitted liabilities can be approved.' });
+        }
+
+        if (String(check.rows[0].remitted_by) === String(req.user.id)) {
+            return res.status(403).json({ message: 'Segregation of duties: The person who remitted the payment cannot be the one who approves it.' });
+        }
+
+        const result = await db.query(`
+            UPDATE payroll_liabilities 
+            SET status = 'Paid',
+                approved_by = $1,
+                approved_at = CURRENT_TIMESTAMP,
+                last_updated = CURRENT_TIMESTAMP
+            WHERE id = $2 AND status = 'Remitted'
+            RETURNING *
+        `, [req.user.id, id]);
+
+        if (result.rows.length === 0) return res.status(400).json({ message: 'Liability record not found or already approved.' });
+
+        // Log to Audit Trail
+        await db.query(`
+            INSERT INTO audit_logs (user_id, action, entity, entity_id, new_values)
+            VALUES ($1, $2, $3, $4, $5)
+        `, [req.user.id, 'APPROVE_LIABILITY', 'Liability', id, JSON.stringify({ details: 'Approved statutory liability remittance' })]);
 
         res.status(200).json(result.rows[0]);
     } catch (error) {
@@ -1256,6 +1302,7 @@ module.exports = {
     deletePayroll,
     getLiabilities,
     payLiability,
+    approveLiability,
     getLiabilityBreakdown,
     payPayrollStatutory,
     payWelfare,

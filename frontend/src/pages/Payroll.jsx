@@ -145,6 +145,17 @@ const Payroll = () => {
             alert(error.response?.data?.message || 'Action failed');
         }
     };
+
+    const handleApproveLiability = async (id) => {
+        if (!window.confirm('Approve this statutory remittance?')) return;
+        try {
+            await api.post(`/payroll/liabilities/${id}/approve`);
+            alert('Remittance Approved');
+            fetchData();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Approval failed');
+        }
+    };
     const handleDownloadPayslip = async (id, month) => {
         try {
             const response = await api.get(`/reports/payroll/${id}/pdf`, { responseType: 'blob' });
@@ -468,7 +479,10 @@ const Payroll = () => {
                                                     </td>
                                                     <td className="px-6 py-5 text-center">
                                                         <div className="flex flex-col items-center gap-1">
-                                                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${liab.status === 'Paid' ? 'bg-emerald-500 text-white' : 'bg-amber-500/20 text-amber-400'
+                                                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                                                                liab.status === 'Paid' ? 'bg-emerald-500 text-white' : 
+                                                                liab.status === 'Remitted' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20' :
+                                                                'bg-amber-500/20 text-amber-400'
                                                                 }`}>
                                                                 {liab.status}
                                                             </span>
@@ -483,7 +497,7 @@ const Payroll = () => {
                                                             >
                                                                 Breakdown
                                                             </button>
-                                                            {liab.status !== 'Paid' && (
+                                                            {liab.status !== 'Paid' && liab.status !== 'Remitted' && (
                                                                 <button
                                                                     onClick={() => {
                                                                         setShowPaymentModal(liab);
@@ -492,6 +506,20 @@ const Payroll = () => {
                                                                     className="h-10 px-6 bg-primary-600 hover:bg-primary-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-primary-600/20 transition-all active:scale-95"
                                                                 >
                                                                     Settle
+                                                                </button>
+                                                            )}
+                                                            {liab.status === 'Remitted' && (
+                                                                <button
+                                                                    onClick={() => handleApproveLiability(liab.id)}
+                                                                    disabled={String(liab.remitted_by) === String(user?.id)}
+                                                                    className={`h-10 px-6 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 ${
+                                                                        String(liab.remitted_by) === String(user?.id) 
+                                                                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed border border-white/5' 
+                                                                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
+                                                                    }`}
+                                                                    title={String(liab.remitted_by) === String(user?.id) ? "Segregation of Duties: You cannot approve your own remittance" : "Authorize Payment"}
+                                                                >
+                                                                    Approve
                                                                 </button>
                                                             )}
                                                         </div>

@@ -27,6 +27,10 @@ const Governance = () => {
     const handleAction = async (id, action, type) => {
         const reason = window.prompt(`Enter reason for ${action}:`);
         if (reason === null) return;
+        if (action === 'Reject' && reason.trim() === '') {
+            toast.error('Rejection reason is required.');
+            return;
+        }
 
         try {
             await api.post('/governance/act', { id, action, approval_reason: reason, type });
@@ -95,6 +99,37 @@ const Governance = () => {
                             <p className="text-[10px] font-black text-blue-600/50 uppercase tracking-widest leading-none mb-1">Loan Identity</p>
                             <p className="text-sm font-black text-slate-900 leading-tight uppercase">Staff Loan Record</p>
                         </div>
+                    </div>
+                );
+            }
+
+            if (change.type === 'LOAN_PAYMENT') {
+                const paid = Number(payload.installments_paid || 0);
+                const total = Number(payload.num_installments || 1);
+                const progress = Math.round((paid / total) * 100);
+                return (
+                    <div className="mt-4 p-5 bg-emerald-50/30 rounded-2xl border border-emerald-100/40 space-y-3">
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="space-y-0.5">
+                                <p className="text-[10px] font-black text-emerald-600/60 uppercase tracking-widest">Payment Amount</p>
+                                <p className="text-base font-black text-emerald-700">LKR {(Number(payload.amount) || 0).toLocaleString()}</p>
+                            </div>
+                            <div className="space-y-0.5">
+                                <p className="text-[10px] font-black text-emerald-600/60 uppercase tracking-widest">Payment Date</p>
+                                <p className="text-sm font-black text-slate-700">{payload.payment_date ? new Date(payload.payment_date).toLocaleDateString() : '—'}</p>
+                            </div>
+                            <div className="space-y-0.5">
+                                <p className="text-[10px] font-black text-emerald-600/60 uppercase tracking-widest">Loan Progress</p>
+                                <p className="text-sm font-black text-slate-700">{paid}/{total} paid ({progress}%)</p>
+                            </div>
+                        </div>
+                        {/* Progress bar */}
+                        <div className="w-full h-1.5 bg-emerald-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${progress}%` }} />
+                        </div>
+                        {payload.note && (
+                            <p className="text-xs font-bold text-slate-500 italic">Note: "{payload.note}"</p>
+                        )}
                     </div>
                 );
             }
@@ -299,13 +334,15 @@ const Governance = () => {
                                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg ${change.type === 'SALARY' ? 'bg-indigo-500 shadow-indigo-200' :
                                             change.type === 'LEAVE' ? 'bg-emerald-500 shadow-emerald-200' :
                                                 change.type === 'LOAN' ? 'bg-blue-500 shadow-blue-200' :
-                                                    change.type === 'FINANCIAL' ? 'bg-amber-500 shadow-amber-200' :
-                                                        change.type === 'PERFORMANCE' ? 'bg-amber-600 shadow-amber-200' :
-                                                            'bg-rose-500 shadow-rose-200'
-                                            }`}>
+                                                    change.type === 'LOAN_PAYMENT' ? 'bg-emerald-600 shadow-emerald-200' :
+                                                        change.type === 'FINANCIAL' ? 'bg-amber-500 shadow-amber-200' :
+                                                            change.type === 'PERFORMANCE' ? 'bg-amber-600 shadow-amber-200' :
+                                                                'bg-rose-500 shadow-rose-200'
+                                            }}`}>
                                             {change.type === 'SALARY' && <Filter size={20} />}
                                             {change.type === 'LEAVE' && <Clock size={20} />}
                                             {change.type === 'LOAN' && <Shield size={20} />}
+                                            {change.type === 'LOAN_PAYMENT' && <ArrowRight size={20} />}
                                             {change.type === 'FINANCIAL' && <AlertCircle size={20} />}
                                             {change.type === 'PERFORMANCE' && <Trophy size={20} />}
                                             {change.type === 'RESIGNATION' && <XCircle size={20} />}

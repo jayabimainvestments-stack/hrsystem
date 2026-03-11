@@ -150,10 +150,10 @@ const Dashboard = () => {
     }, [user.role]);
 
     const statCards = [
-        { label: 'Active Staff', value: stats.employeeCount, icon: Users, color: 'blue', link: '/employees' },
-        { label: 'Current Hub Time', value: currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }), icon: Clock, color: 'emerald', link: '/attendance' },
+        { label: 'Active Staff', value: stats.employeeCount, icon: Users, color: 'green', link: '/employees' },
+        { label: 'Current Hub Time', value: currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }), icon: Clock, color: 'blue', link: '/attendance' },
         { label: 'Performance Journal', value: `${stats.myPerformance} Pts`, icon: Award, color: 'amber', link: '/my-performance' },
-        { label: 'Pending Leaves', value: stats.pendingLeaves, icon: Calendar, color: 'amber', link: '/leaves' },
+        { label: 'Pending Leaves', value: stats.pendingLeaves, icon: Calendar, color: 'green', link: '/leaves' },
         { label: 'Financial Requests', value: stats.pendingFinancial || 0, icon: DollarSign, color: 'rose', link: '/attendance/manual-deductions' },
         { label: 'Last Payroll', value: stats.latestPayroll, icon: CreditCard, color: 'blue', link: '/payroll' }
     ];
@@ -223,7 +223,8 @@ const Dashboard = () => {
                     {statCards.map((card, i) => {
                         const Icon = card.icon;
                         const colors = {
-                            blue: 'bg-primary-50 text-primary-600',
+                            blue: 'bg-secondary-50 text-secondary-600',
+                            green: 'bg-primary-50 text-primary-600',
                             emerald: 'bg-emerald-50 text-emerald-600',
                             amber: 'bg-amber-50 text-amber-600',
                             rose: 'bg-rose-50 text-rose-600'

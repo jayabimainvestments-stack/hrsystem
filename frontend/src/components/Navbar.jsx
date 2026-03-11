@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { BASE_URL } from '../services/api';
+import Logo from '../assets/logo.png';
 import {
     LayoutDashboard, Users, Calendar, CreditCard, FileText, LogOut,
     Settings, ShieldCheck, ClipboardCheck, UserPlus, UserMinus,
@@ -142,10 +143,10 @@ const Navbar = () => {
                 <div className="flex justify-between h-20">
                     <div className="flex items-center gap-8">
                         <Link to="/" className="flex items-center gap-3 font-display font-black text-2xl text-slate-900 tracking-tighter">
-                            <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-100 ring-2 ring-primary-50 transition-transform hover:rotate-3">
-                                <Layers className="text-white" size={20} />
+                            <div className="w-12 h-12 flex items-center justify-center transition-transform hover:rotate-3">
+                                <img src={Logo} alt="JAYABIMA" className="h-10 object-contain" />
                             </div>
-                            <span className="hidden xl:block uppercase">HR Portal</span>
+                            <span className="hidden xl:block uppercase">JAYABIMA HR</span>
                         </Link>
 
                         <div className="hidden lg:flex items-center gap-1 bg-slate-50/50 p-1.5 rounded-2xl border border-slate-100">

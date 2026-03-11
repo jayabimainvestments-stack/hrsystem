@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
     CreditCard, Save, Plus, History, CheckCircle2, XCircle,
     Calendar, DollarSign, User, ShieldCheck, ArrowRight,
-    Clock, AlertCircle, Trash2
+    Clock, AlertCircle, ChevronDown, ChevronUp, Banknote,
+    X, TrendingDown, Wallet
 } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'react-hot-toast';
@@ -12,7 +13,16 @@ const LoanInstallments = () => {
     const [employees, setEmployees] = useState([]);
     const [loans, setLoans] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')) || {});
+
+    // History state — per-loan expanded view
+    const [expandedLoanId, setExpandedLoanId] = useState(null);
+    const [historyMap, setHistoryMap] = useState({}); // loanId -> payment[]
+    const [historyLoading, setHistoryLoading] = useState(false);
+
+    // Manual Payment modal state
+    const [manualModal, setManualModal] = useState(null); // null | loan object
+    const [manualForm, setManualForm] = useState({ amount: '', note: '', payment_date: new Date().toISOString().split('T')[0] });
+    const [manualSubmitting, setManualSubmitting] = useState(false);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -36,7 +46,6 @@ const LoanInstallments = () => {
             const { data } = await api.get('/employees?status=Active');
             setEmployees(Array.isArray(data) ? data : []);
         } catch (err) {
-            console.error(err);
             setEmployees([]);
         }
     };
@@ -54,23 +63,57 @@ const LoanInstallments = () => {
         }
     };
 
+    // Toggle payment history for a loan
+    const toggleHistory = async (loanId) => {
+        if (expandedLoanId === loanId) {
+            setExpandedLoanId(null);
+            return;
+        }
+        setExpandedLoanId(loanId);
+        if (historyMap[loanId]) return; // already loaded
+        setHistoryLoading(true);
+        try {
+            const { data } = await api.get(`/loans/${loanId}/payments`);
+            setHistoryMap(prev => ({ ...prev, [loanId]: data }));
+        } catch {
+            toast.error('Could not load payment history');
+        } finally {
+            setHistoryLoading(false);
+        }
+    };
+
+    // Submit manual payment
+    const handleManualPayment = async (e) => {
+        e.preventDefault();
+        if (!manualModal) return;
+        setManualSubmitting(true);
+        try {
+            const { data } = await api.post(`/loans/${manualModal.id}/manual-payment`, manualForm);
+            toast.success(data.message);
+            // Clear history cache so it reloads
+            setHistoryMap(prev => { const n = { ...prev }; delete n[manualModal.id]; return n; });
+            setManualModal(null);
+            setManualForm({ amount: '', note: '', payment_date: new Date().toISOString().split('T')[0] });
+            fetchLoans();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Payment failed');
+        } finally {
+            setManualSubmitting(false);
+        }
+    };
+
     const handleInput = (e) => {
         const { name, value } = e.target;
         setFormData(prev => {
             const newForm = { ...prev, [name]: value };
-
-            // Auto-calculate end date if num_installments and start_date are present
             if ((name === 'num_installments' || name === 'start_date') && newForm.num_installments && newForm.start_date) {
                 const start = new Date(newForm.start_date);
                 const end = new Date(start.setMonth(start.getMonth() + parseInt(newForm.num_installments) - 1));
                 newForm.end_date = end.toISOString().split('T')[0];
             }
-
-            // Auto-calculate installment if total and num are present
             if ((name === 'total_amount' || name === 'num_installments') && newForm.total_amount && newForm.num_installments) {
                 newForm.installment_amount = (parseFloat(newForm.total_amount) / parseInt(newForm.num_installments)).toFixed(2);
             }
-
             return newForm;
         });
     };
@@ -80,30 +123,11 @@ const LoanInstallments = () => {
         try {
             await api.post('/loans', formData);
             toast.success('Loan application submitted for approval');
-            setFormData({
-                employee_id: '',
-                loan_date: new Date().toISOString().split('T')[0],
-                total_amount: '',
-                installment_amount: '',
-                num_installments: '',
-                start_date: '',
-                end_date: '',
-                reason: ''
-            });
+            setFormData({ employee_id: '', loan_date: new Date().toISOString().split('T')[0], total_amount: '', installment_amount: '', num_installments: '', start_date: '', end_date: '', reason: '' });
             fetchLoans();
             setActiveTab('pending');
         } catch (err) {
             toast.error(err.response?.data?.message || 'Submission failed');
-        }
-    };
-
-    const handleAction = async (id, action) => {
-        try {
-            await api.post(`/loans/${id}/${action}`);
-            toast.success(`Loan ${action}ed successfully`);
-            fetchLoans();
-        } catch (err) {
-            toast.error(err.response?.data?.message || `Failed to ${action} loan`);
         }
     };
 
@@ -112,6 +136,91 @@ const LoanInstallments = () => {
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+            {/* Manual Payment Modal */}
+            {manualModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md p-8 space-y-6 animate-in zoom-in-95 duration-300">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="p-3 bg-emerald-100 rounded-2xl text-emerald-600">
+                                    <Wallet size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Manual Payment</h3>
+                                    <p className="text-[10px] font-bold text-slate-400">{manualModal.employee_name}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setManualModal(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                                <X size={18} className="text-slate-400" />
+                            </button>
+                        </div>
+
+                        {/* Loan summary */}
+                        <div className="bg-slate-50 rounded-2xl p-4 grid grid-cols-3 gap-3 text-center">
+                            <div>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total</p>
+                                <p className="text-xs font-black text-slate-700">LKR {parseFloat(manualModal.total_amount).toLocaleString()}</p>
+                            </div>
+                            <div>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Paid</p>
+                                <p className="text-xs font-black text-emerald-600">{manualModal.installments_paid}/{manualModal.num_installments}</p>
+                            </div>
+                            <div>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Remaining</p>
+                                <p className="text-xs font-black text-blue-600">
+                                    LKR {(parseFloat(manualModal.total_amount) - manualModal.installments_paid * parseFloat(manualModal.installment_amount)).toLocaleString()}
+                                </p>
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleManualPayment} className="space-y-4">
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Payment Amount (LKR)</label>
+                                <input
+                                    type="number"
+                                    required
+                                    min="1"
+                                    value={manualForm.amount}
+                                    onChange={e => setManualForm(p => ({ ...p, amount: e.target.value }))}
+                                    placeholder={`e.g. ${parseFloat(manualModal.installment_amount).toLocaleString()}`}
+                                    className="w-full bg-slate-50 rounded-xl py-3 px-4 text-sm font-bold text-slate-700 border-none outline-none focus:ring-2 focus:ring-emerald-400/30"
+                                />
+                                <p className="text-[9px] text-slate-400 font-bold pl-1">
+                                    Monthly installment: LKR {parseFloat(manualModal.installment_amount).toLocaleString()} — full installments will be credited automatically
+                                </p>
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Payment Date</label>
+                                <input
+                                    type="date"
+                                    value={manualForm.payment_date}
+                                    onChange={e => setManualForm(p => ({ ...p, payment_date: e.target.value }))}
+                                    className="w-full bg-slate-50 rounded-xl py-3 px-4 text-sm font-bold text-slate-700 border-none outline-none focus:ring-2 focus:ring-emerald-400/30"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Note / Reason (Optional)</label>
+                                <input
+                                    type="text"
+                                    value={manualForm.note}
+                                    onChange={e => setManualForm(p => ({ ...p, note: e.target.value }))}
+                                    placeholder="e.g. Employee cash payment"
+                                    className="w-full bg-slate-50 rounded-xl py-3 px-4 text-sm font-bold text-slate-700 border-none outline-none focus:ring-2 focus:ring-emerald-400/30"
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={manualSubmitting}
+                                className="w-full bg-emerald-600 text-white py-3.5 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 disabled:opacity-60"
+                            >
+                                {manualSubmitting ? 'Recording...' : 'Confirm Payment'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
@@ -146,151 +255,78 @@ const LoanInstallments = () => {
 
             {/* Content Area */}
             <div className="grid grid-cols-1 gap-6">
+                {/* --- APPLY TAB --- */}
                 {activeTab === 'apply' && (
                     <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden p-10">
                         <div className="max-w-3xl mx-auto">
                             <form onSubmit={handleSubmit} className="space-y-8">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    {/* Employee Selection */}
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Select Employee</label>
                                         <div className="relative group">
-                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors">
-                                                <User size={18} />
-                                            </div>
-                                            <select
-                                                name="employee_id"
-                                                value={formData.employee_id}
-                                                onChange={handleInput}
-                                                required
-                                                className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 transition-all appearance-none"
-                                            >
+                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors"><User size={18} /></div>
+                                            <select name="employee_id" value={formData.employee_id} onChange={handleInput} required className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 transition-all appearance-none">
                                                 <option value="">Select an employee...</option>
-                                                {employees.map(emp => (
-                                                    <option key={emp.id} value={emp.id}>{emp.name} ({emp.designation})</option>
-                                                ))}
+                                                {employees.map(emp => (<option key={emp.id} value={emp.id}>{emp.name} ({emp.designation})</option>))}
                                             </select>
                                         </div>
                                     </div>
 
-                                    {/* Loan Date */}
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Issue Date</label>
                                         <div className="relative group">
-                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors">
-                                                <Calendar size={18} />
-                                            </div>
-                                            <input
-                                                type="date"
-                                                name="loan_date"
-                                                value={formData.loan_date}
-                                                onChange={handleInput}
-                                                required
-                                                className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                                            />
+                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors"><Calendar size={18} /></div>
+                                            <input type="date" name="loan_date" value={formData.loan_date} onChange={handleInput} required className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 transition-all" />
                                         </div>
                                     </div>
 
-                                    {/* Total Amount */}
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Total Loan Amount (LKR)</label>
                                         <div className="relative group">
-                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors">
-                                                <DollarSign size={18} />
-                                            </div>
-                                            <input
-                                                type="number"
-                                                name="total_amount"
-                                                value={formData.total_amount}
-                                                onChange={handleInput}
-                                                placeholder="e.g. 50000"
-                                                required
-                                                className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                                            />
+                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors"><DollarSign size={18} /></div>
+                                            <input type="number" name="total_amount" value={formData.total_amount} onChange={handleInput} placeholder="e.g. 50000" required className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 transition-all" />
                                         </div>
                                     </div>
 
-                                    {/* Number of Installments */}
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Installment Count (Months)</label>
                                         <div className="relative group">
-                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors">
-                                                <History size={18} />
-                                            </div>
-                                            <input
-                                                type="number"
-                                                name="num_installments"
-                                                value={formData.num_installments}
-                                                onChange={handleInput}
-                                                placeholder="e.g. 10"
-                                                required
-                                                className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                                            />
+                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors"><History size={18} /></div>
+                                            <input type="number" name="num_installments" value={formData.num_installments} onChange={handleInput} placeholder="e.g. 10" required className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 transition-all" />
                                         </div>
                                     </div>
 
-                                    {/* Start Date */}
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Deduction Start Date</label>
                                         <div className="relative group">
-                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors">
-                                                <Clock size={18} />
-                                            </div>
-                                            <input
-                                                type="date"
-                                                name="start_date"
-                                                value={formData.start_date}
-                                                onChange={handleInput}
-                                                required
-                                                className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                                            />
+                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors"><Clock size={18} /></div>
+                                            <input type="date" name="start_date" value={formData.start_date} onChange={handleInput} required className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 transition-all" />
                                         </div>
                                     </div>
 
-                                    {/* Calculated End Date (Disabled) */}
                                     <div className="space-y-2 opacity-60">
-                                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1 text-emerald-600">Calculated End Date</label>
+                                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600 ml-1">Calculated End Date</label>
                                         <div className="relative">
-                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-600">
-                                                <CheckCircle2 size={18} />
-                                            </div>
-                                            <input
-                                                type="date"
-                                                readOnly
-                                                value={formData.end_date}
-                                                className="w-full bg-emerald-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-black text-emerald-700 cursor-not-allowed"
-                                            />
+                                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-600"><CheckCircle2 size={18} /></div>
+                                            <input type="date" readOnly value={formData.end_date} className="w-full bg-emerald-50 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-black text-emerald-700 cursor-not-allowed" />
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Reason for Loan */}
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Reason for Loan (Optional)</label>
-                                    <textarea
-                                        name="reason"
-                                        value={formData.reason}
-                                        onChange={handleInput}
-                                        placeholder="Briefly describe the purpose of this loan..."
-                                        className="w-full bg-slate-50 border-none rounded-3xl py-4 px-6 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 transition-all min-h-[100px] resize-none"
-                                    />
+                                    <textarea name="reason" value={formData.reason} onChange={handleInput} placeholder="Briefly describe the purpose of this loan..." className="w-full bg-slate-50 border-none rounded-3xl py-4 px-6 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/20 transition-all min-h-[100px] resize-none" />
                                 </div>
 
-                                {/* Summary Card */}
                                 <div className="bg-blue-50 rounded-3xl p-6 border border-blue-100/50 flex flex-col md:flex-row justify-between items-center gap-4">
                                     <div className="flex items-center gap-4">
-                                        <div className="p-3 bg-white rounded-2xl text-blue-600 shadow-sm">
-                                            <AlertCircle size={20} />
-                                        </div>
+                                        <div className="p-3 bg-white rounded-2xl text-blue-600 shadow-sm"><AlertCircle size={20} /></div>
                                         <div>
                                             <h4 className="text-xs font-black uppercase tracking-widest text-blue-900">Monthly Deduction</h4>
                                             <p className="text-2xl font-black text-blue-600">LKR {formData.installment_amount || '0.00'}</p>
                                         </div>
                                     </div>
-                                    <button
-                                        type="submit"
-                                        className="w-full md:w-auto bg-blue-600 text-white px-10 py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 flex items-center justify-center gap-2"
-                                    >
+                                    <button type="submit" className="w-full md:w-auto bg-blue-600 text-white px-10 py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 flex items-center justify-center gap-2">
                                         Apply for Approval <ArrowRight size={16} />
                                     </button>
                                 </div>
@@ -299,6 +335,7 @@ const LoanInstallments = () => {
                     </div>
                 )}
 
+                {/* --- PENDING TAB --- */}
                 {activeTab === 'pending' && (
                     <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden min-h-[400px]">
                         {pendingLoans.length === 0 ? (
@@ -322,9 +359,7 @@ const LoanInstallments = () => {
                                             <tr key={loan.id} className="hover:bg-slate-50/50 transition-colors group">
                                                 <td className="px-8 py-6">
                                                     <div className="flex items-center gap-4">
-                                                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-black text-xs">
-                                                            {loan.employee_name?.charAt(0)}
-                                                        </div>
+                                                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-black text-xs">{loan.employee_name?.charAt(0)}</div>
                                                         <div>
                                                             <div className="text-sm font-black text-slate-700">{loan.employee_name}</div>
                                                             <div className="text-[10px] font-bold text-slate-400">Issued: {new Date(loan.loan_date).toLocaleDateString()}</div>
@@ -333,23 +368,14 @@ const LoanInstallments = () => {
                                                     </div>
                                                 </td>
                                                 <td className="px-8 py-6">
-                                                    <div>
-                                                        <div className="text-sm font-black text-slate-700">LKR {parseFloat(loan.total_amount).toLocaleString()}</div>
-                                                        <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">
-                                                            {loan.num_installments} x LKR {parseFloat(loan.installment_amount).toLocaleString()}
-                                                        </div>
-                                                    </div>
+                                                    <div className="text-sm font-black text-slate-700">LKR {parseFloat(loan.total_amount).toLocaleString()}</div>
+                                                    <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">{loan.num_installments} x LKR {parseFloat(loan.installment_amount).toLocaleString()}</div>
                                                 </td>
                                                 <td className="px-8 py-6">
-                                                    <div className="text-xs font-bold text-slate-500 flex items-center gap-2">
-                                                        <User size={12} /> {loan.requester_name}
-                                                    </div>
+                                                    <div className="text-xs font-bold text-slate-500 flex items-center gap-2"><User size={12} /> {loan.requester_name}</div>
                                                 </td>
                                                 <td className="px-8 py-6 text-right">
-                                                    <button
-                                                        onClick={() => window.location.href = '/governance'}
-                                                        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest shadow-sm ml-auto"
-                                                    >
+                                                    <button onClick={() => window.location.href = '/governance'} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest shadow-sm ml-auto">
                                                         Process in Governance <ArrowRight size={14} />
                                                     </button>
                                                 </td>
@@ -362,79 +388,151 @@ const LoanInstallments = () => {
                     </div>
                 )}
 
+                {/* --- ACTIVE TAB --- */}
                 {activeTab === 'active' && (
-                    <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden min-h-[400px]">
+                    <div className="space-y-4">
                         {activeLoans.length === 0 ? (
-                            <div className="h-[400px] flex flex-col items-center justify-center text-slate-400 space-y-4">
+                            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm h-[400px] flex flex-col items-center justify-center text-slate-400 space-y-4">
                                 <ShieldCheck size={48} className="opacity-20" />
                                 <p className="font-bold text-sm">No active or completed loans found.</p>
                             </div>
                         ) : (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse">
-                                    <thead>
-                                        <tr className="border-b border-slate-50">
-                                            <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Employee</th>
-                                            <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Loan Details</th>
-                                            <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Progress</th>
-                                            <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Remaining</th>
-                                            <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-right">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-50">
-                                        {activeLoans.map(loan => (
-                                            <tr key={loan.id} className="hover:bg-slate-50/50 transition-colors group">
-                                                <td className="px-8 py-6">
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-black text-xs">
-                                                            {loan.employee_name?.charAt(0)}
+                            activeLoans.map(loan => {
+                                const paidAmount = loan.installments_paid * parseFloat(loan.installment_amount);
+                                const remaining = parseFloat(loan.total_amount) - paidAmount;
+                                const progress = (loan.installments_paid / loan.num_installments) * 100;
+                                const isExpanded = expandedLoanId === loan.id;
+                                const payments = historyMap[loan.id] || [];
+
+                                return (
+                                    <div key={loan.id} className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden transition-all">
+                                        {/* Loan Row */}
+                                        <div className="px-8 py-6 flex flex-col md:flex-row items-start md:items-center gap-6">
+                                            {/* Employee */}
+                                            <div className="flex items-center gap-4 min-w-[180px]">
+                                                <div className="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-black text-sm">
+                                                    {loan.employee_name?.charAt(0)}
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-black text-slate-800">{loan.employee_name}</div>
+                                                    <div className="text-[10px] font-bold text-slate-400">Since {new Date(loan.loan_date).toLocaleDateString()}</div>
+                                                </div>
+                                            </div>
+
+                                            {/* Amounts */}
+                                            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                <div>
+                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Loan</p>
+                                                    <p className="text-sm font-black text-slate-700">LKR {parseFloat(loan.total_amount).toLocaleString()}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Monthly</p>
+                                                    <p className="text-sm font-black text-blue-600">LKR {parseFloat(loan.installment_amount).toLocaleString()}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Remaining</p>
+                                                    <p className="text-sm font-black text-rose-600">LKR {remaining > 0 ? remaining.toLocaleString() : '0'}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Progress</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                            <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${Math.min(progress, 100)}%` }} />
                                                         </div>
-                                                        <div>
-                                                            <div className="text-sm font-black text-slate-700">{loan.employee_name}</div>
-                                                            <div className="text-[10px] font-bold text-slate-400">Issued: {new Date(loan.loan_date).toLocaleDateString()}</div>
+                                                        <span className="text-[10px] font-black text-slate-500">{loan.installments_paid}/{loan.num_installments}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Status & Actions */}
+                                            <div className="flex items-center gap-3 shrink-0">
+                                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${loan.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                    {loan.status}
+                                                </span>
+
+                                                {/* Manual Payment Button */}
+                                                {loan.status === 'Approved' && (
+                                                    <button
+                                                        onClick={() => { setManualModal(loan); setManualForm({ amount: '', note: '', payment_date: new Date().toISOString().split('T')[0] }); }}
+                                                        className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all"
+                                                        title="Record manual payment"
+                                                    >
+                                                        <Banknote size={13} /> Pay
+                                                    </button>
+                                                )}
+
+                                                {/* History Toggle */}
+                                                <button
+                                                    onClick={() => toggleHistory(loan.id)}
+                                                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 hover:text-blue-700 transition-all"
+                                                >
+                                                    <History size={13} />
+                                                    {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Payment History Panel */}
+                                        {isExpanded && (
+                                            <div className="border-t border-slate-50 bg-slate-50/50 px-8 py-6 animate-in slide-in-from-top-2 duration-300">
+                                                <div className="flex items-center gap-2 mb-4">
+                                                    <TrendingDown size={14} className="text-slate-500" />
+                                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Payment History</h4>
+                                                    <span className="ml-auto text-[10px] font-black text-slate-400">{payments.length} record(s)</span>
+                                                </div>
+
+                                                {historyLoading ? (
+                                                    <div className="flex justify-center py-8">
+                                                        <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                                                    </div>
+                                                ) : payments.length === 0 ? (
+                                                    <div className="text-center py-8 text-slate-400">
+                                                        <History size={32} className="mx-auto mb-2 opacity-20" />
+                                                        <p className="text-xs font-bold">No payment records yet. Records appear after payroll is processed.</p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-2">
+                                                        {/* Header */}
+                                                        <div className="grid grid-cols-4 gap-4 px-4 py-2">
+                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Date</span>
+                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Month</span>
+                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Type</span>
+                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Amount</span>
+                                                        </div>
+
+                                                        {payments.map((p, i) => (
+                                                            <div key={p.id} className={`grid grid-cols-4 gap-4 px-4 py-3 rounded-2xl transition-all ${p.type === 'manual' ? 'bg-emerald-50 border border-emerald-100' : 'bg-white border border-slate-100'}`}>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={`w-1.5 h-1.5 rounded-full ${p.type === 'manual' ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+                                                                    <span className="text-xs font-bold text-slate-700">{new Date(p.payment_date).toLocaleDateString()}</span>
+                                                                </div>
+                                                                <span className="text-xs font-bold text-slate-500">{p.month || '—'}</span>
+                                                                <div>
+                                                                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${p.type === 'manual' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                                        {p.type === 'manual' ? '💵 Manual' : '🏦 Payroll'}
+                                                                    </span>
+                                                                    {p.note && <p className="text-[9px] text-slate-400 mt-0.5 truncate max-w-[120px]">{p.note}</p>}
+                                                                </div>
+                                                                <span className={`text-sm font-black text-right ${p.type === 'manual' ? 'text-emerald-600' : 'text-blue-600'}`}>
+                                                                    LKR {parseFloat(p.amount).toLocaleString()}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+
+                                                        {/* Running Total */}
+                                                        <div className="grid grid-cols-4 gap-4 px-4 py-3 bg-slate-100 rounded-2xl mt-2">
+                                                            <span className="col-span-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Total Paid</span>
+                                                            <span className="text-sm font-black text-slate-800 text-right">
+                                                                LKR {payments.reduce((s, p) => s + parseFloat(p.amount), 0).toLocaleString()}
+                                                            </span>
                                                         </div>
                                                     </div>
-                                                </td>
-                                                <td className="px-8 py-6">
-                                                    <div>
-                                                        <div className="text-sm font-black text-slate-700">LKR {parseFloat(loan.total_amount).toLocaleString()}</div>
-                                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                                            Inst: LKR {parseFloat(loan.installment_amount).toLocaleString()}
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-8 py-6">
-                                                    <div className="flex flex-col gap-1.5">
-                                                        <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                                            <span>{loan.installments_paid} of {loan.num_installments} Paid</span>
-                                                            <span>{Math.round((loan.installments_paid / loan.num_installments) * 100)}%</span>
-                                                        </div>
-                                                        <div className="w-40 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                                            <div
-                                                                className="h-full bg-blue-600 rounded-full transition-all duration-1000"
-                                                                style={{ width: `${(loan.installments_paid / loan.num_installments) * 100}%` }}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-8 py-6">
-                                                    <div className="text-sm font-black text-emerald-600">
-                                                        LKR {(parseFloat(loan.total_amount) - (loan.installments_paid * parseFloat(loan.installment_amount))).toLocaleString()}
-                                                    </div>
-                                                </td>
-                                                <td className="px-8 py-6 text-right">
-                                                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${loan.status === 'Completed'
-                                                        ? 'bg-emerald-100 text-emerald-700'
-                                                        : 'bg-blue-100 text-blue-700'
-                                                        }`}>
-                                                        {loan.status}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })
                         )}
                     </div>
                 )}

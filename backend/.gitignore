@@ -1,0 +1,27 @@
+# Ignore everything by default
+/*
+
+# But allow these core files and folders
+!/package.json
+!/package-lock.json
+!/server.js
+!/Dockerfile
+!/README.md
+!/controllers/
+!/routes/
+!/middleware/
+!/services/
+!/config/
+!/database/
+!/utils/
+!/migrations/
+!/.gitignore
+
+# Still ignore node_modules and other large/temporary stuff even if in allowed folders
+node_modules/
+pg_data/
+*.log
+debug_server_crash.txt
+backups/
+uploads/
+.env

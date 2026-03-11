@@ -40,8 +40,6 @@ const OrgManager = () => {
                 work_end_time: '17:00:00',
                 short_leave_monthly_limit: 0,
                 half_day_yearly_limit: 0,
-                absent_day_amount: parseFloat(policyRes.data?.absent_day_amount || 0),
-                late_hourly_rate: parseFloat(policyRes.data?.late_hourly_rate || 0),
                 absent_deduction_rate: parseFloat(policyRes.data?.absent_deduction_rate || 1.0),
                 ...policyRes.data,
                 // Overwrite with parsed numbers for clean display

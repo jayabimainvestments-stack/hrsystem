@@ -8,6 +8,9 @@ const rateLimit = require('express-rate-limit');
 
 const app = express();
 
+// Trust proxy for Hugging Face/Vercel platform proxy
+app.set('trust proxy', 1);
+
 // CORS Configuration - allow Vercel frontend and local dev
 const allowedOrigins = [
     /\.vercel\.app$/,      // All Vercel deployments

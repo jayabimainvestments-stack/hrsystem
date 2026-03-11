@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import Logo from '../assets/logo.png';
 
 const Login = () => {
     const [email, setEmail] = useState('');
@@ -21,9 +22,13 @@ const Login = () => {
     };
 
     return (
-        <div className="flex h-screen items-center justify-center bg-gray-100">
-            <div className="w-full max-w-md p-8 bg-white rounded-lg shadow-md">
-                <h2 className="mb-6 text-2xl font-bold text-center text-gray-800">HR System Login</h2>
+        <div className="flex h-screen items-center justify-center bg-slate-50 font-display">
+            <div className="w-full max-w-md p-10 bg-white rounded-[2rem] shadow-2xl border border-slate-100">
+                <div className="flex flex-col items-center mb-10">
+                    <img src={Logo} alt="JAYABIMA" className="h-16 mb-4 object-contain" />
+                    <h2 className="text-3xl font-black text-center text-slate-900 tracking-tighter uppercase">JAYABIMA HR</h2>
+                    <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-2 px-4 py-1 bg-slate-50 rounded-full">Secure Enterprise Login</p>
+                </div>
                 {error && <div className="p-3 mb-4 text-sm text-red-700 bg-red-100 rounded">{error}</div>}
                 <form onSubmit={handleSubmit}>
                     <div className="mb-4">
@@ -50,10 +55,10 @@ const Login = () => {
                     </div>
                     <div className="flex items-center justify-between">
                         <button
-                            className="w-full px-4 py-2 font-bold text-white bg-blue-500 rounded hover:bg-blue-700 focus:outline-none focus:shadow-outline"
+                            className="w-full px-8 py-4 font-black transition-all text-white bg-primary-600 rounded-2xl hover:bg-primary-700 shadow-lg shadow-primary-100 uppercase text-xs tracking-widest"
                             type="submit"
                         >
-                            Sign In
+                            Sign In to Workspace &rarr;
                         </button>
                     </div>
                 </form>

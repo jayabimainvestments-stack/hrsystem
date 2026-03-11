@@ -115,13 +115,39 @@ const getPendingChanges = async (req, res) => {
             WHERE mo.status = 'Draft' AND (mo.reason ILIKE '%performance%' OR mo.component_id IN (SELECT id FROM salary_components WHERE name ILIKE '%performance%'))
         `);
 
+        // 7. Manual Loan Payments (Pending approval)
+        const loanPaymentRequests = await db.query(`
+            SELECT
+                lp.id, 'LOAN_PAYMENT' as type, lp.loan_id as entity_id, 'MANUAL_LOAN_PAYMENT' as field_name,
+                NULL as old_value,
+                json_build_object(
+                    'amount', lp.amount,
+                    'payment_date', lp.payment_date,
+                    'note', lp.note,
+                    'loan_id', lp.loan_id,
+                    'total_loan', el.total_amount,
+                    'installment_amount', el.installment_amount,
+                    'installments_paid', el.installments_paid,
+                    'num_installments', el.num_installments
+                ) as new_value,
+                lp.created_by as requested_by, lp.note as reason, lp.status,
+                cu.name as requester_name, eu.name as target_name, lp.created_at as updated_at
+            FROM loan_payments lp
+            JOIN employee_loans el ON lp.loan_id = el.id
+            JOIN employees emp ON el.employee_id = emp.id
+            JOIN users eu ON emp.user_id = eu.id
+            LEFT JOIN users cu ON lp.created_by = cu.id
+            WHERE lp.status = 'Pending' AND lp.type = 'manual'
+        `);
+
         const allChanges = [
             ...(genericChanges.rows || []),
             ...(leaveRequests.rows || []),
             ...(loanRequests.rows || []),
             ...(financialRequests.rows || []),
             ...(resignationRequests.rows || []),
-            ...(performanceOverrides.rows || [])
+            ...(performanceOverrides.rows || []),
+            ...(loanPaymentRequests.rows || [])
         ].sort((a, b) => {
             const dateA = a.updated_at ? new Date(a.updated_at) : 0;
             const dateB = b.updated_at ? new Date(b.updated_at) : 0;
@@ -384,8 +410,10 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
             }
         }
         else if (type === 'PERFORMANCE') {
+            // monthly_salary_overrides has no approved_by / rejection_reason columns.
+            // Safe update: status + updated_at only.
             await client.query(
-                'UPDATE monthly_salary_overrides SET status = $1 WHERE id = $2',
+                'UPDATE monthly_salary_overrides SET status = $1, updated_at = NOW() WHERE id = $2',
                 [status, id]
             );
         }
@@ -394,6 +422,43 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
                 'UPDATE resignations SET status = $1, approved_by = $2, rejection_reason = $3, updated_at = NOW() WHERE id = $4',
                 [status, req.user.id, action === 'Reject' ? approval_reason : null, id]
             );
+        }
+        else if (type === 'LOAN_PAYMENT') {
+            // id here is the loan_payments.id (the pending manual payment)
+            const lpRes = await client.query('SELECT * FROM loan_payments WHERE id = $1', [id]);
+            if (lpRes.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ message: 'Loan payment record not found.' });
+            }
+            const lp = lpRes.rows[0];
+
+            // Update the loan_payment record status
+            await client.query(
+                'UPDATE loan_payments SET status = $1 WHERE id = $2',
+                [status, id]
+            );
+
+            if (action === 'Approve') {
+                // Get the parent loan
+                const loanRes = await client.query('SELECT * FROM employee_loans WHERE id = $1', [lp.loan_id]);
+                if (loanRes.rows.length > 0) {
+                    const loan = loanRes.rows[0];
+                    const installmentsCovered = Math.min(
+                        Math.floor(parseFloat(lp.amount) / parseFloat(loan.installment_amount)),
+                        loan.num_installments - loan.installments_paid
+                    );
+                    const newPaid = loan.installments_paid + installmentsCovered;
+                    const isComplete = newPaid >= loan.num_installments;
+
+                    await client.query(`
+                        UPDATE employee_loans
+                        SET installments_paid = $1,
+                            status = CASE WHEN $2 THEN 'Completed' ELSE status END,
+                            updated_at = NOW()
+                        WHERE id = $3
+                    `, [newPaid, isComplete, loan.id]);
+                }
+            }
         }
 
         await client.query('COMMIT');
