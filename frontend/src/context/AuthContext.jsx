@@ -1,4 +1,5 @@
-import { createContext, useState, useEffect, useContext } from 'react';
+import { createContext, useState, useEffect, useContext, useRef } from 'react';
+
 import api from '../services/api';
 
 const AuthContext = createContext();
@@ -60,6 +61,65 @@ export const AuthProvider = ({ children }) => {
         sessionStorage.setItem('user', JSON.stringify(updatedUser));
         setUser(updatedUser);
     };
+
+    const INTERVAL_TIME = 10000; // Check every 10 seconds
+    const TIMEOUT_TIME = 1 * 60 * 1000; // 1 minute
+    const ACTIVITY_KEY = 'last_hr_activity';
+
+    const checkInactivity = () => {
+        const lastActivity = parseInt(localStorage.getItem(ACTIVITY_KEY) || Date.now());
+        const inactiveTime = Date.now() - lastActivity;
+        
+        if (inactiveTime >= TIMEOUT_TIME && user) {
+            logout();
+            // Hard redirect to ensure all states are cleared and user is at login
+            window.location.href = '/login?reason=inactivity';
+        }
+    };
+
+    const resetTimer = () => {
+        localStorage.setItem(ACTIVITY_KEY, Date.now().toString());
+    };
+
+    useEffect(() => {
+        if (!user) {
+            localStorage.removeItem(ACTIVITY_KEY);
+            return;
+        }
+
+        const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+        const handleActivity = () => resetTimer();
+        
+        const handleStorageChange = (e) => {
+            if (e.key === 'token' && !e.newValue) {
+                // If token is removed in another tab, logout this tab too
+                logout();
+                window.location.href = '/login';
+            }
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                checkInactivity();
+            }
+        };
+
+        // Initial setup
+        resetTimer();
+        events.forEach(event => document.addEventListener(event, handleActivity));
+        window.addEventListener('storage', handleStorageChange);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        // Periodic watchdog
+        const interval = setInterval(checkInactivity, INTERVAL_TIME);
+
+        return () => {
+            events.forEach(event => document.removeEventListener(event, handleActivity));
+            window.removeEventListener('storage', handleStorageChange);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            clearInterval(interval);
+        };
+    }, [user]);
 
     return (
         <AuthContext.Provider value={{ user, login, logout, loading, updateUser }}>

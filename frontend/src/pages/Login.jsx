@@ -30,7 +30,7 @@ const Login = () => {
                     <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-2 px-4 py-1 bg-slate-50 rounded-full">Secure Enterprise Login</p>
                 </div>
                 {error && <div className="p-3 mb-4 text-sm text-red-700 bg-red-100 rounded">{error}</div>}
-                <form onSubmit={handleSubmit}>
+                <form onSubmit={handleSubmit} autoComplete="off">
                     <div className="mb-4">
                         <label className="block mb-2 text-sm font-bold text-gray-700" htmlFor="email">Email</label>
                         <input
@@ -40,6 +40,7 @@ const Login = () => {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
+                            autoComplete="new-password"
                         />
                     </div>
                     <div className="mb-6">
@@ -51,6 +52,7 @@ const Login = () => {
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             required
+                            autoComplete="new-password"
                         />
                     </div>
                     <div className="flex items-center justify-between">
