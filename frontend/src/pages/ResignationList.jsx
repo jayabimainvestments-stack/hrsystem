@@ -8,7 +8,7 @@ const ResignationList = () => {
     const [resignations, setResignations] = useState([]);
     const [loading, setLoading] = useState(true);
     const { user } = useAuth();
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
 
     useEffect(() => {
         fetchResignations();

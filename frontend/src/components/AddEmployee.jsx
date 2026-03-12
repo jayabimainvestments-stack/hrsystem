@@ -22,7 +22,7 @@ const AddEmployee = ({ onClose, onEmployeeAdded }) => {
     const [activeTab, setActiveTab] = useState('basic');
     const [departments, setDepartments] = useState([]);
     const [designations, setDesignations] = useState([]);
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
 
     useEffect(() => {
         const fetchMeta = async () => {

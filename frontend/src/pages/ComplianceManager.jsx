@@ -11,7 +11,7 @@ const ComplianceManager = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeView, setActiveView] = useState('disciplinary'); // 'disciplinary' or 'training'
 
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
 
     useEffect(() => {
         fetchData();

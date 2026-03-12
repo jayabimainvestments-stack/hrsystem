@@ -15,7 +15,7 @@ const OrgManager = () => {
     const [modal, setModal] = useState(null); // { type, mode, data }
     const [formData, setFormData] = useState({});
 
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
 
     useEffect(() => {
         fetchData();

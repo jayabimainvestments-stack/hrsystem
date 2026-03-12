@@ -15,7 +15,7 @@ const PerformanceTab = ({ employeeId }) => {
         status: 'Submitted'
     });
 
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
 
     useEffect(() => {
         fetchAppraisals();

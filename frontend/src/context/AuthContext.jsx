@@ -10,9 +10,13 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // One-time mandatory cleanup to ensure old localStorage tokens don't revive sessions
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+
         const checkLoggedIn = async () => {
-            const token = localStorage.getItem('token');
-            const storedUser = localStorage.getItem('user');
+            const token = sessionStorage.getItem('token');
+            const storedUser = sessionStorage.getItem('user');
 
             if (token && storedUser) {
                 try {
@@ -20,43 +24,23 @@ export const AuthProvider = ({ children }) => {
                     setUser(userObj);
                 } catch (error) {
                     console.error("Failed to parse user from storage", error);
-                    localStorage.removeItem('token');
-                    localStorage.removeItem('user');
+                    sessionStorage.removeItem('token');
+                    sessionStorage.removeItem('user');
                 }
             } else {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
+                sessionStorage.removeItem('token');
+                sessionStorage.removeItem('user');
             }
             setLoading(false);
         };
         checkLoggedIn();
-
-        // Cross-tab synchronization logic
-        const handleStorageChange = (e) => {
-            if (e.key === 'token') {
-                if (!e.newValue) {
-                    // Logged out in another tab
-                    setUser(null);
-                    window.location.href = '/login';
-                } else if (e.newValue !== e.oldValue) {
-                    // Different user logged in in another tab
-                    window.location.reload();
-                }
-            }
-            if (e.key === 'user' && !e.newValue) {
-                setUser(null);
-            }
-        };
-
-        window.addEventListener('storage', handleStorageChange);
-        return () => window.removeEventListener('storage', handleStorageChange);
     }, []);
 
     const login = async (email, password) => {
         try {
             const { data } = await api.post('/auth/login', { email, password });
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('user', JSON.stringify(data));
+            sessionStorage.setItem('token', data.token);
+            sessionStorage.setItem('user', JSON.stringify(data));
             setUser(data);
             return { success: true };
         } catch (error) {
@@ -66,14 +50,14 @@ export const AuthProvider = ({ children }) => {
     };
 
     const logout = () => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        sessionStorage.removeItem('token');
+        sessionStorage.removeItem('user');
         setUser(null);
     };
 
     const updateUser = (updates) => {
         const updatedUser = { ...user, ...updates };
-        localStorage.setItem('user', JSON.stringify(updatedUser));
+        sessionStorage.setItem('user', JSON.stringify(updatedUser));
         setUser(updatedUser);
     };
 
