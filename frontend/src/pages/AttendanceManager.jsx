@@ -178,6 +178,71 @@ const AttendanceManager = () => {
         }
     };
 
+    const handleBiometricUSB = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Ensure we have a device selected
+        if (devices.length === 0) {
+            alert('Please register a Biometric Device first in the "Devices" tab.');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            const text = event.target.result;
+            const lines = text.split('\n');
+            const punches = [];
+
+            // ZktEco format: UserID\tTimestamp\tStatus...
+            for (let line of lines) {
+                line = line.trim();
+                if (!line) continue;
+                
+                // Try tab separation first (Standard ZktEco)
+                let parts = line.split('\t');
+                if (parts.length < 2) parts = line.split(/\s+/); // Fallback to any whitespace
+                
+                if (parts.length >= 2) {
+                    const biometric_id = parts[0].trim();
+                    const punch_time = parts[1].trim();
+                    
+                    // Validate punch_time looks like a date/time
+                    if (punch_time.includes(':') && (punch_time.includes('-') || punch_time.includes('/'))) {
+                        punches.push({ biometric_id, punch_time });
+                    }
+                }
+            }
+
+            if (punches.length === 0) {
+                alert('No valid biometric logs found in file. Ensure it is a .dat or .txt file from the device.');
+                return;
+            }
+
+            // For now, use the first active device's API Key
+            // Optimization: Let user choose if multiple devices exist
+            const deviceRes = await api.get('/biometric/devices');
+            const activeDevice = deviceRes.data.find(d => d.status === 'Active');
+            
+            if (!activeDevice) {
+                alert('No active biometric device found to authorize this upload.');
+                return;
+            }
+
+            const device_key = prompt(`Please enter the API Key for device "${activeDevice.device_name}" to authorize this upload:`);
+            if (!device_key) return;
+
+            try {
+                const { data } = await api.post('/biometric/punch-bulk', { punches, device_key });
+                alert(data.message);
+                fetchAttendance();
+            } catch (error) {
+                alert(error.response?.data?.message || 'Failed to upload biometric data');
+            }
+        };
+        reader.readAsText(file);
+    };
+
     const handleBulkUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -434,6 +499,11 @@ const AttendanceManager = () => {
                                         <Upload size={14} className="group-hover:-translate-y-1 transition-transform" />
                                         <span className="text-[9px] font-black uppercase tracking-widest">CSV</span>
                                         <input type="file" accept=".csv" className="hidden" onChange={handleBulkUpload} />
+                                    </label>
+                                    <label className="flex-1 bg-blue-600 text-white p-3 rounded-2xl cursor-pointer hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2 group ring-2 ring-blue-50">
+                                        <Tablet size={14} className="group-hover:scale-110 transition-transform" />
+                                        <span className="text-[9px] font-black uppercase tracking-widest">USB Import</span>
+                                        <input type="file" accept=".dat,.txt" className="hidden" onChange={handleBiometricUSB} />
                                     </label>
                                     <button
                                         onClick={handleSyncAttendance}

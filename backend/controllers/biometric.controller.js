@@ -119,4 +119,94 @@ const deleteDevice = async (req, res) => {
     }
 };
 
-module.exports = { processPunch, registerDevice, getDevices, deleteDevice };
+// @desc    Bulk process punches (for USB import)
+// @route   POST /api/biometric/punch-bulk
+// @access  Device API Key
+const bulkProcessPunches = async (req, res) => {
+    const { punches, device_key } = req.body; // punches: [{ biometric_id, punch_time }]
+    
+    if (!punches || !Array.isArray(punches)) {
+        return res.status(400).json({ message: 'Invalid punches array' });
+    }
+
+    try {
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // 1. Authenticate Device
+            const deviceRes = await client.query('SELECT * FROM attendance_devices WHERE api_key = $1 AND status = $2', [device_key, 'Active']);
+            if (deviceRes.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(401).json({ message: 'Unauthorized or inactive device' });
+            }
+            const device = deviceRes.rows[0];
+
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (const punch of punches) {
+                const { biometric_id, punch_time } = punch;
+                
+                // Identify Employee
+                const empRes = await client.query('SELECT id FROM employees WHERE biometric_id = $1', [biometric_id]);
+                if (empRes.rows.length === 0) {
+                    errorCount++;
+                    continue;
+                }
+                const employee = empRes.rows[0];
+
+                const pDate = new Date(punch_time);
+                const punchDate = pDate.toISOString().split('T')[0];
+                const punchTimeStr = pDate.toTimeString().split(' ')[0];
+
+                const existingAttendance = await client.query(
+                    'SELECT id, clock_in FROM attendance WHERE employee_id = $1 AND date = $2',
+                    [employee.id, punchDate]
+                );
+
+                if (existingAttendance.rows.length === 0) {
+                    // First punch -> Clock In
+                    await client.query(
+                        `INSERT INTO attendance (employee_id, date, clock_in, source, device_id)
+                         VALUES ($1, $2, $3, $4, $5)`,
+                        [employee.id, punchDate, punchTimeStr, 'Biometric-USB', device.device_name]
+                    );
+                } else {
+                    const existing = existingAttendance.rows[0];
+                    // If this punch is much later than the current clock_out, update clock_out.
+                    // Or simply update clock_out to the maximum time for that day.
+                    await client.query(
+                        `UPDATE attendance 
+                         SET clock_out = GREATEST(COALESCE(clock_out, '00:00:00'), $1),
+                             updated_at = CURRENT_TIMESTAMP 
+                         WHERE id = $2`,
+                        [punchTimeStr, existing.id]
+                    );
+                }
+                successCount++;
+            }
+
+            await client.query('UPDATE attendance_devices SET last_sync = CURRENT_TIMESTAMP WHERE id = $1', [device.id]);
+            await client.query('COMMIT');
+            
+            res.status(200).json({
+                message: `Processed ${successCount} punches. ${errorCount} employees not found.`,
+                successCount,
+                errorCount
+            });
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error('[BIOMETRIC_BULK_ERROR]', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = { processPunch, bulkProcessPunches, registerDevice, getDevices, deleteDevice };
+
