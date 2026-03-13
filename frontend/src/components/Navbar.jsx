@@ -138,38 +138,44 @@ const Navbar = () => {
     ];
 
     return (
-        <nav className="sticky top-0 z-50 bg-white shadow-md border-b border-slate-200" aria-label="Main Navigation">
-            {/* 1. Letterhead Section (Ultimate Branding) */}
-            <div className="bg-white py-8 border-b border-slate-100 px-4 sm:px-6 lg:px-8">
-                <div className="max-w-screen-2xl mx-auto flex flex-col items-center text-center">
-                    <div className="flex flex-col items-center gap-4">
-                        <Link to="/" className="flex items-center transition-transform hover:scale-105 active:scale-95 mb-4">
-                            <img src={Logo} alt="JAYABIMA" className="h-[120px] w-auto object-contain" />
-                        </Link>
-                        
-                        <div className="flex flex-col items-center">
-                            <h1 className="flex flex-col leading-[0.8] mb-2">
-                                <span className="text-8xl font-black text-slate-900 tracking-tighter uppercase font-display filter drop-shadow-sm">
-                                    JAYABIMA
-                                </span>
-                                <span className="text-5xl font-black text-secondary-600 tracking-tight uppercase font-display mt-2">
-                                    INVESTMENTS <span className="text-primary-500 text-2xl font-bold ml-1 tracking-normal">(PVT) LTD.</span>
-                                </span>
-                            </h1>
-                            <div className="flex items-center gap-4 mt-6">
-                                <div className="h-0.5 w-24 bg-gradient-to-r from-transparent via-primary-500 to-transparent rounded-full"></div>
-                                <p className="text-xs font-black uppercase tracking-[0.5em] text-slate-400">HR Management System</p>
-                                <div className="h-0.5 w-24 bg-gradient-to-r from-transparent via-primary-500 to-transparent rounded-full"></div>
-                            </div>
+        <nav className="sticky top-0 z-50 flex flex-col w-full" aria-label="Main Navigation">
+            {/* 1. Letterhead Section (Dominant Branding) */}
+            <div className="bg-white border-b border-slate-100 shadow-sm relative overflow-hidden">
+                {/* Decorative Accents */}
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary-500 via-secondary-500 to-primary-500 opacity-60"></div>
+                
+                <div className="max-w-screen-2xl mx-auto px-4 py-8 sm:px-6 lg:px-8 flex flex-col items-center">
+                    <Link to="/" className="group mb-4">
+                        <img 
+                            src={Logo} 
+                            alt="JAYABIMA" 
+                            className="h-24 w-auto object-contain transition-transform group-hover:scale-105 duration-500" 
+                        />
+                    </Link>
+                    
+                    <div className="text-center">
+                        <h1 className="flex flex-col items-center leading-none">
+                            <span className="text-7xl sm:text-8xl font-black text-slate-900 tracking-tighter uppercase font-display select-none">
+                                JAYABIMA
+                            </span>
+                            <span className="text-3xl sm:text-4xl font-black text-secondary-600 tracking-tight uppercase font-display mt-2 flex items-center gap-2">
+                                INVESTMENTS <span className="text-primary-500 text-lg font-bold bg-primary-50 px-2 py-0.5 rounded-md border border-primary-100">(PVT) LTD.</span>
+                            </span>
+                        </h1>
+                        <div className="flex items-center justify-center gap-4 mt-8">
+                            <div className="h-px w-16 sm:w-32 bg-slate-200"></div>
+                            <p className="text-[10px] sm:text-xs font-black uppercase tracking-[0.6em] text-slate-400">HR Management System</p>
+                            <div className="h-px w-16 sm:w-32 bg-slate-200"></div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* 2. Navigation & Profile Bar */}
-            <div className="bg-slate-50/80 backdrop-blur-xl px-4 mx-auto max-w-screen-2xl sm:px-6 lg:px-8 h-20">
-                <div className="flex justify-between items-center h-full">
-                    <div className="hidden lg:flex items-center gap-1.5 p-1 bg-white/50 rounded-2xl border border-slate-100 overflow-x-auto no-scrollbar">
+            {/* 2. Navigation Bar (Clean & Professional) */}
+            <div className="bg-white/80 backdrop-blur-2xl border-b border-slate-200 sticky top-0 px-4 sm:px-6 lg:px-8 py-3">
+                <div className="max-w-screen-2xl mx-auto flex justify-between items-center">
+                    {/* Navigation Links (Hubs) */}
+                    <div className="hidden lg:flex items-center gap-2">
                         {hubs.filter(h => h.show !== false).map((hub, i) => (
                             <HubDropdown
                                 key={i}
@@ -181,40 +187,43 @@ const Navbar = () => {
                         ))}
                     </div>
 
-                    <div className="flex items-center gap-6">
-                        <div className="hidden sm:flex flex-col items-end">
-                            <span className="text-[13px] font-bold text-slate-600 bg-white px-3 py-1 rounded-full border border-slate-100 shadow-sm">
+                    {/* Mobile Menu Placeholder or Minimal Links */}
+                    <div className="lg:hidden flex items-center gap-4">
+                        <Link to="/" className="text-slate-600 font-bold uppercase text-[10px] tracking-widest">Dashboard</Link>
+                    </div>
+
+                    {/* Right Side: Profile & Logout */}
+                    <div className="flex items-center gap-5">
+                        <div className="hidden sm:flex flex-col items-end border-r border-slate-200 pr-5">
+                            <span className="text-[13px] font-bold text-slate-700">
                                 {user?.name?.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                             </span>
-                            <div className="flex items-center gap-2 mt-1.5 mr-2">
-                                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                                <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">{user?.role}</span>
-                            </div>
+                            <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400 mt-0.5">{user?.role}</span>
                         </div>
 
-                        <Link to="/profile" className="h-10 w-10 rounded-xl bg-secondary-600 overflow-hidden shadow-lg shadow-secondary-100 border-2 border-white transition-all hover:scale-105 active:scale-95 group/navav">
-                            {user?.profile_picture ? (
-                                <img
-                                    src={user.profile_picture.startsWith('http') ? user.profile_picture : `${BASE_URL}${user.profile_picture}`}
-                                    alt={user.name}
-                                    className="w-full h-full object-cover group-hover/navav:scale-110 transition-transform duration-500"
-                                />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center text-white text-lg font-black uppercase">
-                                    {user?.name?.charAt(0)}
-                                </div>
-                            )}
-                        </Link>
+                        <div className="flex items-center gap-3">
+                            <Link to="/profile" className="h-10 w-10 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 hover:border-secondary-400 transition-all hover:scale-105 active:scale-95 group/navav shadow-sm">
+                                {user?.profile_picture ? (
+                                    <img
+                                        src={user.profile_picture.startsWith('http') ? user.profile_picture : `${BASE_URL}${user.profile_picture}`}
+                                        alt={user.name}
+                                        className="w-full h-full object-cover group-hover/navav:scale-110 transition-transform duration-500"
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-slate-400 text-lg font-black uppercase">
+                                        {user?.name?.charAt(0)}
+                                    </div>
+                                )}
+                            </Link>
 
-                        <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
-
-                        <button
-                            onClick={logout}
-                            className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-100"
-                            title="Logout"
-                        >
-                            <LogOut size={18} />
-                        </button>
+                            <button
+                                onClick={logout}
+                                className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-100"
+                                title="Exit Session"
+                            >
+                                <LogOut size={18} />
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -169,33 +169,48 @@ const Dashboard = () => {
             <Navbar />
             <main className="max-w-7xl mx-auto px-4 py-10 sm:px-6 lg:px-8">
                 {/* Welcome Header */}
-                <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6 px-4">
-                    <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-3">
-                            <h2 className="text-lg font-black tracking-[0.2em] uppercase text-slate-300">
-                                Workspace Registry
-                            </h2>
-                            <div className="h-0.5 flex-1 bg-gradient-to-r from-slate-100 to-transparent"></div>
+                <header className="mb-12">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
+                        <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="h-0.5 w-12 bg-primary-500 rounded-full"></div>
+                                <h2 className="text-xs font-black tracking-[0.4em] uppercase text-slate-400">
+                                    Administrative Hub
+                                </h2>
+                            </div>
+                            <h1 className="text-4xl font-bold text-slate-900 tracking-tight leading-none mb-3">
+                                Salutations, <span className="text-primary-600 font-black">{user.name?.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</span>.
+                            </h1>
+                            <p className="text-slate-500 text-lg font-medium max-w-2xl leading-relaxed">
+                                Welcome to your central command center. All systems are operational and synchronized.
+                            </p>
                         </div>
-                        <p className="text-2xl font-medium text-slate-500 tracking-tight">
-                            Salutations, <span className="text-slate-900 font-bold">{user.name?.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</span>.
-                        </p>
-                        <div className="mt-6 flex items-center gap-3 bg-white/60 backdrop-blur-md w-fit px-4 py-2 rounded-xl border border-slate-100 shadow-sm">
-                            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-sm shadow-emerald-200"></div>
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 tabular-nums">Sync Status: {currentTime.toLocaleTimeString('en-GB')}</span>
+                        
+                        <div className="flex items-center gap-4 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm">
+                            <div className="flex flex-col items-end">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">System Pulse</span>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                                    <span className="text-xl font-black text-slate-800 tabular-nums">{currentTime.toLocaleTimeString('en-GB')}</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-8">
-                        <div className="hidden lg:block">
-                            <AnalogClock />
+                    <div className="flex flex-wrap items-center justify-between gap-6 pt-8 border-t border-slate-100">
+                        <div className="flex items-center gap-8">
+                            <div className="hidden lg:block">
+                                <AnalogClock />
+                            </div>
                         </div>
+                        
                         {(user.role === 'Admin' || user.role === 'HR Manager') && (
                             <button
                                 onClick={() => setShowAddModal(true)}
-                                className="btn-primary"
+                                className="btn-primary group"
                             >
-                                <UserCircle size={20} /> Add Employee
+                                <UserCircle size={20} className="group-hover:scale-110 transition-transform" /> 
+                                <span className="font-black uppercase tracking-widest text-xs">Add Employee to Registry</span>
                             </button>
                         )}
                     </div>
@@ -238,14 +253,14 @@ const Dashboard = () => {
                                 key={i}
                                 className="card-premium p-8 hover:shadow-xl hover:-translate-y-1 transition-all group"
                             >
-                                 <div className={`w-12 h-12 ${colors[card.color] || colors.blue} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-sm`}>
-                                    <Icon size={20} />
+                                 <div className={`w-14 h-14 ${colors[card.color] || colors.blue} rounded-3xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 transition-all shadow-md shadow-slate-100`}>
+                                    <Icon size={24} className="text-white" />
                                 </div>
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">{card.label}</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{card.label}</p>
                                 <div className="flex items-end justify-between">
-                                    <span className="text-xl font-black tracking-tighter tabular-nums text-slate-900">{card.value}</span>
-                                    <div className="p-1.5 bg-slate-50 text-slate-300 rounded-lg group-hover:bg-primary-50 group-hover:text-primary-400 transition-colors">
-                                        <ChevronRight size={12} />
+                                    <span className="text-2xl font-black tracking-tighter tabular-nums text-slate-900">{card.value}</span>
+                                    <div className="p-2 bg-slate-50 text-slate-400 rounded-xl group-hover:bg-primary-500 group-hover:text-white transition-all transform translate-x-1 opacity-0 group-hover:opacity-100 group-hover:translate-x-0">
+                                        <ChevronRight size={16} />
                                     </div>
                                 </div>
                             </Link>

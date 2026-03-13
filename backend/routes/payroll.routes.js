@@ -16,7 +16,8 @@ const {
     getPayrollPreview,
     deletePayroll,
     deleteAllPayrolls,
-    getMonthlyOverrides
+    getMonthlyOverrides,
+    approveLiability
 } = require('../controllers/payroll.controller');
 const { protect } = require('../middleware/auth.middleware');
 const { checkPermission } = require('../middleware/permission.middleware');
