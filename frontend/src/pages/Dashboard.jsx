@@ -169,17 +169,20 @@ const Dashboard = () => {
             <Navbar />
             <main className="max-w-7xl mx-auto px-4 py-10 sm:px-6 lg:px-8">
                 {/* Welcome Header */}
-                <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
+                <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6 px-4">
                     <div className="flex-1">
-                        <h1 className="text-4xl font-black tracking-tight leading-tight uppercase">
-                            Dashboard
-                        </h1>
-                        <p className="text-slate-500 font-medium mt-1">
-                            Welcome back, <span className="text-slate-900 font-bold">{user.name}</span>. Welcome to your HR workspace.
+                        <div className="flex items-center gap-3 mb-3">
+                            <h2 className="text-lg font-black tracking-[0.2em] uppercase text-slate-300">
+                                Workspace Registry
+                            </h2>
+                            <div className="h-0.5 flex-1 bg-gradient-to-r from-slate-100 to-transparent"></div>
+                        </div>
+                        <p className="text-2xl font-medium text-slate-500 tracking-tight">
+                            Salutations, <span className="text-slate-900 font-bold">{user.name?.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</span>.
                         </p>
-                        <div className="mt-4 flex items-center gap-2 bg-primary-50/50 w-fit px-4 py-2 rounded-2xl border border-primary-100">
-                            <div className="w-2 h-2 bg-primary-600 rounded-full animate-pulse"></div>
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary-600 tabular-nums">Current Time: {currentTime.toLocaleTimeString('en-GB')}</span>
+                        <div className="mt-6 flex items-center gap-3 bg-white/60 backdrop-blur-md w-fit px-4 py-2 rounded-xl border border-slate-100 shadow-sm">
+                            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-sm shadow-emerald-200"></div>
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 tabular-nums">Sync Status: {currentTime.toLocaleTimeString('en-GB')}</span>
                         </div>
                     </div>
 
@@ -235,14 +238,14 @@ const Dashboard = () => {
                                 key={i}
                                 className="card-premium p-8 hover:shadow-xl hover:-translate-y-1 transition-all group"
                             >
-                                <div className={`w-14 h-14 ${colors[card.color] || colors.blue} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
-                                    <Icon size={28} />
+                                 <div className={`w-12 h-12 ${colors[card.color] || colors.blue} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-sm`}>
+                                    <Icon size={20} />
                                 </div>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{card.label}</p>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">{card.label}</p>
                                 <div className="flex items-end justify-between">
-                                    <span className="text-3xl font-black tracking-tighter tabular-nums">{card.value}</span>
-                                    <div className="p-2 bg-slate-50 text-slate-300 rounded-full group-hover:bg-primary-50 group-hover:text-primary-400 transition-colors">
-                                        <ChevronRight size={16} />
+                                    <span className="text-xl font-black tracking-tighter tabular-nums text-slate-900">{card.value}</span>
+                                    <div className="p-1.5 bg-slate-50 text-slate-300 rounded-lg group-hover:bg-primary-50 group-hover:text-primary-400 transition-colors">
+                                        <ChevronRight size={12} />
                                     </div>
                                 </div>
                             </Link>
@@ -298,15 +301,15 @@ const Dashboard = () => {
                                         <Camera size={32} className="text-white mb-2 transform scale-75 group-hover/avatar:scale-100 transition-transform" />
                                         <span className="text-[8px] font-black text-white uppercase tracking-tighter">Modify Photo</span>
                                     </div>
-                                    {user.profile_picture ? (
+                                     {user.profile_picture ? (
                                         <img
                                             src={user.profile_picture.startsWith('http') ? user.profile_picture : `${BASE_URL}${user.profile_picture}`}
                                             alt={user.name}
                                             className="w-full h-full object-cover"
                                         />
                                     ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-white text-4xl font-black">
-                                            {user.name.charAt(0)}
+                                        <div className="w-full h-full flex items-center justify-center text-white text-3xl font-black">
+                                            {user.name?.charAt(0)}
                                         </div>
                                     )}
                                 </div>
@@ -329,11 +332,15 @@ const Dashboard = () => {
                                 <Camera size={10} /> {user.profile_picture ? 'Change Photo' : 'Upload Photo'}
                             </button>
 
-                            <div className="text-center mb-8">
-                                <h3 className="text-2xl font-black tracking-tight leading-tight uppercase">{user.name}</h3>
-                                <p className="text-[10px] font-black text-primary-500 uppercase tracking-widest mt-1 bg-primary-50 px-3 py-1 rounded-full inline-block">
-                                    {user.role} Role
-                                </p>
+                            <div className="text-center mb-10">
+                                <h3 className="text-xl font-bold tracking-tight text-slate-800">
+                                    {user.name?.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                                </h3>
+                                <div className="flex items-center gap-2 justify-center mt-2">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                        {user.role} Authority
+                                    </span>
+                                </div>
                             </div>
 
                             <div className="w-full space-y-3">

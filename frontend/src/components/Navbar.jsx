@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { BASE_URL } from '../services/api';
-import Logo from '../assets/logo.png';
+import Logo from '../assets/logo_base64';
 import {
     LayoutDashboard, Users, Calendar, CreditCard, FileText, LogOut,
     Settings, ShieldCheck, ClipboardCheck, UserPlus, UserMinus,
@@ -138,40 +138,61 @@ const Navbar = () => {
     ];
 
     return (
-        <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-xl border-b border-slate-100 shadow-sm" aria-label="Main Navigation">
-            <div className="px-4 mx-auto max-w-screen-2xl sm:px-6 lg:px-8">
-                <div className="flex justify-between h-20">
-                    <div className="flex items-center gap-8">
-                        <Link to="/" className="flex items-center gap-3 font-display font-black text-2xl text-slate-900 tracking-tighter">
-                            <div className="w-12 h-12 flex items-center justify-center transition-transform hover:rotate-3">
-                                <img src={Logo} alt="JAYABIMA" className="h-10 object-contain" />
-                            </div>
-                            <span className="hidden xl:block uppercase">JAYABIMA HR</span>
+        <nav className="sticky top-0 z-50 bg-white shadow-md border-b border-slate-200" aria-label="Main Navigation">
+            {/* 1. Letterhead Section (Ultimate Branding) */}
+            <div className="bg-white py-8 border-b border-slate-100 px-4 sm:px-6 lg:px-8">
+                <div className="max-w-screen-2xl mx-auto flex flex-col items-center text-center">
+                    <div className="flex flex-col items-center gap-4">
+                        <Link to="/" className="flex items-center transition-transform hover:scale-105 active:scale-95 mb-4">
+                            <img src={Logo} alt="JAYABIMA" className="h-[120px] w-auto object-contain" />
                         </Link>
-
-                        <div className="hidden lg:flex items-center gap-1 bg-slate-50/50 p-1.5 rounded-2xl border border-slate-100">
-                            {hubs.filter(h => h.show !== false).map((hub, i) => (
-                                <HubDropdown
-                                    key={i}
-                                    label={hub.label}
-                                    icon={hub.icon}
-                                    items={hub.items}
-                                    activePaths={hub.paths}
-                                />
-                            ))}
+                        
+                        <div className="flex flex-col items-center">
+                            <h1 className="flex flex-col leading-[0.8] mb-2">
+                                <span className="text-8xl font-black text-slate-900 tracking-tighter uppercase font-display filter drop-shadow-sm">
+                                    JAYABIMA
+                                </span>
+                                <span className="text-5xl font-black text-secondary-600 tracking-tight uppercase font-display mt-2">
+                                    INVESTMENTS <span className="text-primary-500 text-2xl font-bold ml-1 tracking-normal">(PVT) LTD.</span>
+                                </span>
+                            </h1>
+                            <div className="flex items-center gap-4 mt-6">
+                                <div className="h-0.5 w-24 bg-gradient-to-r from-transparent via-primary-500 to-transparent rounded-full"></div>
+                                <p className="text-xs font-black uppercase tracking-[0.5em] text-slate-400">HR Management System</p>
+                                <div className="h-0.5 w-24 bg-gradient-to-r from-transparent via-primary-500 to-transparent rounded-full"></div>
+                            </div>
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    <div className="flex items-center gap-4">
+            {/* 2. Navigation & Profile Bar */}
+            <div className="bg-slate-50/80 backdrop-blur-xl px-4 mx-auto max-w-screen-2xl sm:px-6 lg:px-8 h-20">
+                <div className="flex justify-between items-center h-full">
+                    <div className="hidden lg:flex items-center gap-1.5 p-1 bg-white/50 rounded-2xl border border-slate-100 overflow-x-auto no-scrollbar">
+                        {hubs.filter(h => h.show !== false).map((hub, i) => (
+                            <HubDropdown
+                                key={i}
+                                label={hub.label}
+                                icon={hub.icon}
+                                items={hub.items}
+                                activePaths={hub.paths}
+                            />
+                        ))}
+                    </div>
+
+                    <div className="flex items-center gap-6">
                         <div className="hidden sm:flex flex-col items-end">
-                            <span className="text-sm font-black text-slate-900 leading-none uppercase tracking-tight">{user?.name}</span>
-                            <div className="flex items-center gap-1.5 mt-1.5">
+                            <span className="text-[13px] font-bold text-slate-600 bg-white px-3 py-1 rounded-full border border-slate-100 shadow-sm">
+                                {user?.name?.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                            </span>
+                            <div className="flex items-center gap-2 mt-1.5 mr-2">
                                 <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-500 leading-none">{user?.role}</span>
+                                <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">{user?.role}</span>
                             </div>
                         </div>
 
-                        <Link to="/profile" className="h-14 w-14 rounded-[1.25rem] bg-blue-600 overflow-hidden shadow-2xl shadow-blue-100 ring-4 ring-white transition-all hover:scale-110 active:scale-95 group/navav">
+                        <Link to="/profile" className="h-10 w-10 rounded-xl bg-secondary-600 overflow-hidden shadow-lg shadow-secondary-100 border-2 border-white transition-all hover:scale-105 active:scale-95 group/navav">
                             {user?.profile_picture ? (
                                 <img
                                     src={user.profile_picture.startsWith('http') ? user.profile_picture : `${BASE_URL}${user.profile_picture}`}
@@ -185,14 +206,14 @@ const Navbar = () => {
                             )}
                         </Link>
 
-                        <div className="h-8 w-px bg-slate-100 hidden sm:block"></div>
+                        <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
 
                         <button
                             onClick={logout}
-                            className="p-3 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-2xl transition-all"
+                            className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-100"
                             title="Logout"
                         >
-                            <LogOut size={20} />
+                            <LogOut size={18} />
                         </button>
                     </div>
                 </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import Logo from '../assets/logo.png';
+import Logo from '../assets/logo_base64';
 
 const Login = () => {
     const [email, setEmail] = useState('');
@@ -25,7 +25,7 @@ const Login = () => {
         <div className="flex h-screen items-center justify-center bg-slate-50 font-display">
             <div className="w-full max-w-md p-10 bg-white rounded-[2rem] shadow-2xl border border-slate-100">
                 <div className="flex flex-col items-center mb-10">
-                    <img src={Logo} alt="JAYABIMA" className="h-16 mb-4 object-contain" />
+                    <img src={Logo} alt="JAYABIMA" className="h-48 mb-8 object-contain" />
                     <h2 className="text-3xl font-black text-center text-slate-900 tracking-tighter uppercase">JAYABIMA HR</h2>
                     <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-2 px-4 py-1 bg-slate-50 rounded-full">Secure Enterprise Login</p>
                 </div>

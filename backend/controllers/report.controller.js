@@ -134,91 +134,128 @@ const generatePayslipPDF = async (req, res) => {
         const employee = empRes.rows[0];
 
         // 2. Create PDF
-        const doc = new PDFDocument({ margin: 50 });
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=payslip-${employee.employee_id}-${payroll.month}.pdf`);
 
         doc.pipe(res);
 
-        // Header
-        doc.fontSize(20).text('JAYABIMA INVESTMENTS', { align: 'center' });
-        doc.fontSize(10).text('Payslip for ' + payroll.month + ' ' + payroll.year, { align: 'center' });
-        doc.moveDown();
-        drawLine(doc, doc.y);
-        doc.moveDown();
+        const logoBase64 = require('../assets/logo_base64');
 
-        // Employee Info
-        doc.fontSize(10);
-        doc.text(`Name: ${employee.name}`, 50, doc.y);
-        doc.text(`ID: ${employee.employee_id}`, 300, doc.y - 12);
-        doc.moveDown();
-        doc.text(`Designation: ${employee.designation}`, 50, doc.y);
-        doc.text(`Department: ${employee.department}`, 300, doc.y - 12);
-        doc.moveDown();
-        doc.text(`EPF No: ${employee.epf_no || 'N/A'}`, 50, doc.y);
-        doc.text(`NIC: ${employee.nic_passport || 'N/A'}`, 300, doc.y - 12);
+        // --- Header Section ---
+        try {
+            doc.image(logoBase64, 50, 20, { width: 280 });
+        } catch (err) {
+            console.error('Logo error:', err.message);
+            doc.fillColor('#256635').fontSize(22).font('Helvetica-Bold').text('JAYABIMA INVESTMENTS', 50, 30);
+        }
+        
+        doc.fillColor('#6b7280').fontSize(9).font('Helvetica').text('No 365 F 2/2, Opposite the bus stand, Matale Rd, Dambulla', 50, 65, { align: 'left' });
+        doc.text('Phone: 066 2285952 | Email: jayabimainvestments@gmail.com', 50, 77);
+        
+        doc.fillColor('#3f51b5').fontSize(16).font('Helvetica-Bold').text('PAYSLIP', 450, 35, { align: 'right' });
+        doc.fillColor('#374151').fontSize(10).font('Helvetica').text(`${payroll.month} ${payroll.year}`, 450, 55, { align: 'right' });
 
-        doc.moveDown();
-        drawLine(doc, doc.y);
-        doc.moveDown();
+        doc.moveTo(50, 100).lineTo(550, 100).strokeColor('#256635').lineWidth(2).stroke();
+        doc.moveDown(4);
 
-        // Earnings
-        doc.fontSize(12).font('Helvetica-Bold').text('Earnings', { underline: true });
-        doc.fontSize(10).font('Helvetica');
-        doc.moveDown();
+        // --- Employee Info Section ---
+        const startY = 130;
+        doc.font('Helvetica-Bold').fontSize(10).fillColor('#3f51b5').text('EMPLOYEE DETAILS', 50, startY);
+        doc.moveTo(50, startY + 15).lineTo(550, startY + 15).strokeColor('#e5e7eb').lineWidth(1).stroke();
+        
+        doc.font('Helvetica').fontSize(9);
+        let currentInfoY = startY + 25;
 
-        const earnings = breakdown.filter(i => i.type === 'Earning');
-        earnings.forEach(item => {
-            doc.text(item.component_name, 50, doc.y);
-            doc.text(parseFloat(item.amount).toFixed(2), 200, doc.y - 12, { align: 'right', width: 100 });
-            doc.moveDown();
+        const infoItems = [
+            { l1: 'Employee ID:', v1: employee.employee_id, l2: 'Department:', v2: employee.department },
+            { l1: 'Employee Name:', v1: employee.name, l2: 'NIC/Passport:', v2: employee.nic_passport },
+            { l1: 'Designation:', v1: employee.designation, l2: 'EPF Number:', v2: employee.epf_no }
+        ];
+
+        infoItems.forEach(item => {
+            doc.font('Helvetica').fillColor('#6b7280').text(item.l1, 50, currentInfoY);
+            doc.font('Helvetica-Bold').fillColor('black').text(item.v1 || 'N/A', 140, currentInfoY, { width: 190 });
+            
+            doc.font('Helvetica').fillColor('#6b7280').text(item.l2, 350, currentInfoY);
+            doc.font('Helvetica-Bold').fillColor('black').text(item.v2 || 'N/A', 430, currentInfoY, { width: 120 });
+            
+            const h1 = doc.heightOfString(item.v1 || 'N/A', { width: 190 });
+            const h2 = doc.heightOfString(item.v2 || 'N/A', { width: 120 });
+            currentInfoY += Math.max(h1, h2, 12) + 8; // Dynamic spacing + padding
         });
 
+        // --- Earnings and Deductions Tables ---
+        const tableY = currentInfoY + 20;
+        
+        // Headers
+        doc.fillColor('#f9fafb').rect(50, tableY, 245, 20).fill();
+        doc.fillColor('#f9fafb').rect(305, tableY, 245, 20).fill();
+        
+        doc.fillColor('#3f51b5').font('Helvetica-Bold').fontSize(9);
+        doc.text('EARNINGS', 60, tableY + 6);
+        doc.text('AMOUNT', 210, tableY + 6, { align: 'right', width: 75 });
+        
+        doc.text('DEDUCTIONS', 315, tableY + 6);
+        doc.text('AMOUNT', 465, tableY + 6, { align: 'right', width: 75 });
+        
+        doc.fillColor('black').font('Helvetica').fontSize(9);
+        
+        let earnY = tableY + 30;
+        let dedY = tableY + 30;
+
+        // Populate Earnings
+        const earnings = breakdown.filter(i => i.type === 'Earning');
         const basicSalary = parseFloat(payroll.basic_salary);
-        if (!earnings.find(e => e.component_name.toLowerCase().includes('basic'))) {
-            doc.text('Basic Salary', 50, doc.y);
-            doc.text(basicSalary.toFixed(2), 200, doc.y - 12, { align: 'right', width: 100 });
-            doc.moveDown();
-        }
+        
+        // Always show Basic first
+        doc.text('Basic Salary', 60, earnY);
+        doc.text(basicSalary.toFixed(2), 210, earnY, { align: 'right', width: 75 });
+        earnY += 15;
 
-        doc.moveDown();
-        doc.font('Helvetica-Bold').text('Total Earnings', 50, doc.y);
-        const totalEarnings = basicSalary + parseFloat(payroll.bonuses || 0);
-        doc.text(totalEarnings.toFixed(2), 200, doc.y - 12, { align: 'right', width: 100 });
-        doc.font('Helvetica');
+        earnings.forEach(item => {
+            if (!item.component_name.toLowerCase().includes('basic')) {
+                doc.text(item.component_name, 60, earnY);
+                doc.text(parseFloat(item.amount).toFixed(2), 210, earnY, { align: 'right', width: 75 });
+                earnY += 15;
+            }
+        });
 
-        // Spacing before Deductions
-        doc.moveDown();
-        doc.moveDown();
-
-        drawLine(doc, doc.y);
-        doc.moveDown();
-
-        doc.fontSize(12).text('Deductions', { underline: true });
-        doc.fontSize(10);
-        doc.moveDown();
-
+        // Populate Deductions
         const deductions = breakdown.filter(i => i.type === 'Deduction' || i.type === 'Statutory');
         deductions.forEach(item => {
-            doc.text(item.component_name, 50, doc.y);
-            doc.text(parseFloat(item.amount).toFixed(2), 200, doc.y - 12, { align: 'right', width: 100 });
-            doc.moveDown();
+            doc.text(item.component_name, 315, dedY);
+            doc.text(parseFloat(item.amount).toFixed(2), 465, dedY, { align: 'right', width: 75 });
+            dedY += 15;
         });
 
-        doc.moveDown();
-        doc.font('Helvetica-Bold').text('Total Deductions', 50, doc.y);
-        doc.text(parseFloat(payroll.deductions).toFixed(2), 200, doc.y - 12, { align: 'right', width: 100 });
+        const maxTableHeight = Math.max(earnY, dedY) + 10;
+        
+        // Subtotals
+        doc.moveTo(50, maxTableHeight).lineTo(295, maxTableHeight).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+        doc.moveTo(305, maxTableHeight).lineTo(550, maxTableHeight).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+        
+        const subtotalY = maxTableHeight + 10;
+        doc.font('Helvetica-Bold');
+        doc.text('Total Earnings', 60, subtotalY);
+        const totalEarningsValue = basicSalary + parseFloat(payroll.bonuses || 0); // This logic might need adjustment based on actual payroll structure
+        doc.text(totalEarningsValue.toFixed(2), 210, subtotalY, { align: 'right', width: 75 });
 
-        doc.moveDown();
-        drawLine(doc, doc.y);
-        doc.moveDown();
+        doc.text('Total Deductions', 315, subtotalY);
+        doc.text(parseFloat(payroll.deductions).toFixed(2), 465, subtotalY, { align: 'right', width: 75 });
 
-        // Net Pay
-        doc.fontSize(14).font('Helvetica-Bold');
-        doc.text('NET PAYABLE', 50, doc.y);
-        doc.text(parseFloat(payroll.net_salary).toFixed(2), 200, doc.y - 16, { align: 'right', width: 100 });
-        doc.fontSize(10).font('Helvetica');
+        // --- Summary Section ---
+        const summaryY = subtotalY + 40;
+        doc.fillColor('#f0f4ff').rect(50, summaryY, 500, 40).fill();
+        doc.fillColor('#3f51b5').font('Helvetica-Bold').fontSize(14);
+        doc.text('NET SALARY PAYABLE:', 70, summaryY + 12);
+        doc.text(`Rs. ${parseFloat(payroll.net_salary).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 350, summaryY + 12, { align: 'right', width: 180 });
+
+        // --- Footer ---
+        doc.fillColor('#9ca3af').font('Helvetica').fontSize(8);
+        doc.text('This is a computer-generated payslip and does not require a signature.', 0, 750, { align: 'center', width: 612 });
+        doc.text('© 2026 JAYABIMA Investments. All rights reserved.', 0, 762, { align: 'center', width: 612 });
 
         doc.end();
 

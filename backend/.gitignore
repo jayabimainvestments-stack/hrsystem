@@ -15,6 +15,7 @@
 !/database/
 !/utils/
 !/migrations/
+!/assets/
 !/.gitignore
 
 # Still ignore node_modules and other large/temporary stuff even if in allowed folders
