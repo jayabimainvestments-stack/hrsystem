@@ -7,6 +7,23 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
+// Helper to determine early departure before 16:30
+const isEarlyDeparture = (clockOutTime) => {
+    if (!clockOutTime || clockOutTime === '--:--') return false;
+    
+    // Parse the clockOutTime (HH:mm or HH:mm:ss) into a Date object for today
+    // We assume PM times might be 16:30 or 04:30 PM, but clock_out from DB is 24H HH:mm:ss
+    const timeMatch = clockOutTime.match(/^(\d{1,2}):(\d{2})/);
+    if (!timeMatch) return false;
+    
+    const hours = parseInt(timeMatch[1], 10);
+    const minutes = parseInt(timeMatch[2], 10);
+    
+    // 16:30 is the policy end time (16 * 60 + 30 = 990 minutes)
+    const outMinutes = hours * 60 + minutes;
+    return outMinutes < 990;
+};
+
 const AttendanceManager = () => {
     const [activeTab, setActiveTab] = useState('daily'); // daily, summary, leaves, history, devices
     const [attendance, setAttendance] = useState([]);
@@ -30,6 +47,8 @@ const AttendanceManager = () => {
     const [newRecord, setNewRecord] = useState({ employee_id: '', clock_in: '', clock_out: '', status: 'Present' });
     const [newDevice, setNewDevice] = useState({ device_name: '', branch_name: '', ip_address: '' });
     const [syncing, setSyncing] = useState(false);
+    const [syncingDevice, setSyncingDevice] = useState(false);
+    const [syncResult, setSyncResult] = useState(null); // { success, message }
 
     // Column Filters
     const [nameSearch, setNameSearch] = useState('');
@@ -333,6 +352,22 @@ const AttendanceManager = () => {
         }
     };
 
+    const handleSyncDevice = async () => {
+        setSyncingDevice(true);
+        setSyncResult(null);
+        try {
+            const { data } = await api.post('/biometric/sync-device');
+            setSyncResult({ success: true, message: data.message });
+            // Refresh attendance data after sync
+            fetchAttendance();
+        } catch (error) {
+            const msg = error.response?.data?.message || 'Device sync failed. Ensure the device is on the same network as this server.';
+            setSyncResult({ success: false, message: msg });
+        } finally {
+            setSyncingDevice(false);
+        }
+    };
+
     const handleSyncAttendance = async () => {
         if (!window.confirm(`Synchronize attendance with leave records for ${startDate} to ${endDate}? This will mark missing records as Absent or Leave.`)) return;
         setSyncing(true);
@@ -514,6 +549,22 @@ const AttendanceManager = () => {
                                         <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
                                         <span className="text-[9px] font-black uppercase tracking-widest">Sync</span>
                                     </button>
+                                    {/* Biometric Device Pull Button */}
+                                    <button
+                                        onClick={handleSyncDevice}
+                                        disabled={syncingDevice}
+                                        className={`flex-1 p-3 rounded-2xl border-2 transition-all flex items-center justify-center gap-2 ${
+                                            syncingDevice
+                                                ? 'bg-purple-50 text-purple-400 border-purple-100 cursor-not-allowed'
+                                                : 'bg-purple-600 text-white border-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-100'
+                                        }`}
+                                        title="Pull latest data from ZKTeco device over LAN"
+                                    >
+                                        <Tablet size={14} className={syncingDevice ? 'animate-pulse' : ''} />
+                                        <span className="text-[9px] font-black uppercase tracking-widest">
+                                            {syncingDevice ? 'Syncing...' : 'Device'}
+                                        </span>
+                                    </button>
                                 </div>
                             )}
                             {canManage && activeTab === 'daily' && (
@@ -537,6 +588,24 @@ const AttendanceManager = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* Device Sync Result Toast */}
+                {syncResult && (
+                    <div
+                        className={`mb-4 px-6 py-4 rounded-2xl flex items-center justify-between gap-4 cursor-pointer animate-in fade-in slide-in-from-top-2 duration-300 ${
+                            syncResult.success
+                                ? 'bg-emerald-50 border border-emerald-100 text-emerald-700'
+                                : 'bg-red-50 border border-red-100 text-red-700'
+                        }`}
+                        onClick={() => setSyncResult(null)}
+                    >
+                        <div className="flex items-center gap-3">
+                            <span className="text-xl">{syncResult.success ? '✅' : '❌'}</span>
+                            <span className="text-sm font-bold">{syncResult.message}</span>
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Click to dismiss</span>
+                    </div>
+                )}
 
                 <div className="bg-white shadow-2xl shadow-slate-200/50 rounded-[2.5rem] border border-slate-100 overflow-hidden">
                     {activeTab === 'my' && (
@@ -574,20 +643,21 @@ const AttendanceManager = () => {
                                                 </td>
                                                 <td className="px-8 py-6">
                                                     <div className="flex items-center gap-3">
-                                                        <div className="flex flex-col">
+                                                        <div className="flex flex-col min-w-[60px]">
                                                             <span className="text-xs font-black text-slate-900">{record.clock_in || '--:--'}</span>
-                                                            <span className="text-[9px] font-bold text-slate-300 uppercase">Input</span>
+                                                            <span className="text-[9px] font-bold text-slate-300 uppercase mt-1 leading-none">Input</span>
+                                                            {record.late_minutes > 0 && (
+                                                                <span className="text-[10px] font-bold text-red-500 mt-1 leading-none">Late Arrived</span>
+                                                            )}
                                                         </div>
-                                                        <div className="h-px w-3 bg-slate-200"></div>
-                                                        <div className="flex flex-col">
+                                                        <div className="h-px w-3 bg-slate-200 self-start mt-2"></div>
+                                                        <div className="flex flex-col min-w-[60px]">
                                                             <span className="text-xs font-black text-slate-900">{record.clock_out || '--:--'}</span>
-                                                            <span className="text-[9px] font-bold text-slate-300 uppercase">Exit</span>
+                                                            <span className="text-[9px] font-bold text-slate-300 uppercase mt-1 leading-none">Exit</span>
+                                                            {isEarlyDeparture(record.clock_out) && (
+                                                                <span className="text-[10px] font-bold text-red-500 mt-1 leading-none">Early Departure</span>
+                                                            )}
                                                         </div>
-                                                        {record.late_minutes > 0 && (
-                                                            <span className="ml-4 text-[10px] font-black text-red-500 bg-red-50 px-2 py-0.5 rounded-lg">
-                                                                {record.late_minutes}m Late
-                                                            </span>
-                                                        )}
                                                     </div>
                                                 </td>
                                                 <td className="px-8 py-6">
@@ -599,7 +669,8 @@ const AttendanceManager = () => {
                                                     </span>
                                                 </td>
                                                 <td className="px-8 py-6 text-xs text-slate-400 italic">
-                                                    {record.late_minutes > 0 ? 'Late entry.' : 'Regular entry.'}
+                                                    {/* Keeping this column for general notes now */}
+                                                    {record.status === 'Absent' ? 'No punch recorded.' : 'Recorded via ' + record.source}
                                                 </td>
                                             </tr>
                                         ))}
@@ -644,20 +715,21 @@ const AttendanceManager = () => {
                                                 </td>
                                                 <td className="px-8 py-6">
                                                     <div className="flex items-center gap-3">
-                                                        <div className="flex flex-col">
+                                                        <div className="flex flex-col min-w-[60px]">
                                                             <span className="text-xs font-black text-slate-900">{record.clock_in || '--:--'}</span>
-                                                            <span className="text-[10px] font-bold text-slate-300 uppercase">Input (24H)</span>
+                                                            <span className="text-[10px] font-bold text-slate-300 uppercase leading-none mt-1">Input (24H)</span>
+                                                            {record.late_minutes > 0 && (
+                                                                <span className="text-[10px] font-bold text-red-500 leading-none mt-1">Late Arrived</span>
+                                                            )}
                                                         </div>
-                                                        <div className="h-px w-4 bg-slate-200"></div>
-                                                        <div className="flex flex-col">
+                                                        <div className="h-px w-4 bg-slate-200 self-start mt-2"></div>
+                                                        <div className="flex flex-col min-w-[60px]">
                                                             <span className="text-xs font-black text-slate-900">{record.clock_out || '--:--'}</span>
-                                                            <span className="text-[10px] font-bold text-slate-300 uppercase">Exit (24H)</span>
+                                                            <span className="text-[10px] font-bold text-slate-300 uppercase leading-none mt-1">Exit (24H)</span>
+                                                            {isEarlyDeparture(record.clock_out) && (
+                                                                <span className="text-[10px] font-bold text-red-500 leading-none mt-1">Early Departure</span>
+                                                            )}
                                                         </div>
-                                                        {record.late_minutes > 0 && (
-                                                            <span className="ml-4 text-[10px] font-black text-red-500 bg-red-50 px-2 py-0.5 rounded-lg">
-                                                                +{record.late_minutes}m Late
-                                                            </span>
-                                                        )}
                                                     </div>
                                                 </td>
                                                 <td className="px-8 py-6">
