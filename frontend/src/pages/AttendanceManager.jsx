@@ -71,7 +71,7 @@ const AttendanceManager = () => {
     const [sourceSearch, setSourceSearch] = useState('');
 
     const { user } = useAuth();
-    const canManage = user?.role === 'Admin' || user?.role === 'HR Manager';
+    const canManage = user?.role?.includes('Admin') || user?.role?.includes('HR');
 
     useEffect(() => {
         // Redirect regular employees to 'my' tab if they try to access admin tabs
