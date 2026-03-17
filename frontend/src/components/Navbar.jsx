@@ -75,6 +75,20 @@ const HubDropdown = ({ label, icon: Icon, items, activePaths }) => {
     );
 };
 
+const formatName = (name) => {
+    if (!name) return '';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length <= 1) return name;
+    
+    const initials = parts.slice(0, -1)
+        .map(p => p.charAt(0).toUpperCase() + '.')
+        .join(' ');
+    const lastName = parts[parts.length - 1];
+    const titledLast = lastName.charAt(0).toUpperCase() + lastName.slice(1).toLowerCase();
+    
+    return `${initials} ${titledLast}`;
+};
+
 const Navbar = () => {
     const { user, logout } = useAuth();
     const location = useLocation();
@@ -139,52 +153,28 @@ const Navbar = () => {
 
     return (
         <nav className="sticky top-0 z-50 flex flex-col w-full" aria-label="Main Navigation">
-            {/* 1. Letterhead Section (Dominant Branding) */}
-            <div className="bg-white border-b border-slate-100 shadow-sm relative overflow-hidden">
-                {/* Decorative Accents */}
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary-500 via-secondary-500 to-primary-500 opacity-60"></div>
-                
-                <div className="max-w-screen-2xl mx-auto px-4 py-8 sm:px-6 lg:px-8 flex flex-col items-center">
-                    <Link to="/" className="group mb-4">
-                        <img 
-                            src={Logo} 
-                            alt="JAYABIMA" 
-                            className="h-24 w-auto object-contain transition-transform group-hover:scale-105 duration-500" 
-                        />
-                    </Link>
-                    
-                    <div className="text-center">
-                        <h1 className="flex flex-col items-center leading-none">
-                            <span className="text-7xl sm:text-8xl font-black text-slate-900 tracking-tighter uppercase font-display select-none">
-                                JAYABIMA
-                            </span>
-                            <span className="text-3xl sm:text-4xl font-black text-secondary-600 tracking-tight uppercase font-display mt-2 flex items-center gap-2">
-                                INVESTMENTS <span className="text-primary-500 text-lg font-bold bg-primary-50 px-2 py-0.5 rounded-md border border-primary-100">(PVT) LTD.</span>
-                            </span>
-                        </h1>
-                        <div className="flex items-center justify-center gap-4 mt-8">
-                            <div className="h-px w-16 sm:w-32 bg-slate-200"></div>
-                            <p className="text-[10px] sm:text-xs font-black uppercase tracking-[0.6em] text-slate-400">HR Management System</p>
-                            <div className="h-px w-16 sm:w-32 bg-slate-200"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             {/* 2. Navigation Bar (Clean & Professional) */}
             <div className="bg-white/80 backdrop-blur-2xl border-b border-slate-200 sticky top-0 px-4 sm:px-6 lg:px-8 py-3">
                 <div className="max-w-screen-2xl mx-auto flex justify-between items-center">
-                    {/* Navigation Links (Hubs) */}
-                    <div className="hidden lg:flex items-center gap-2">
-                        {hubs.filter(h => h.show !== false).map((hub, i) => (
-                            <HubDropdown
-                                key={i}
-                                label={hub.label}
-                                icon={hub.icon}
-                                items={hub.items}
-                                activePaths={hub.paths}
-                            />
-                        ))}
+                    {/* Brand & Navigation Links (Hubs) */}
+                    <div className="flex items-center gap-6">
+                        <Link to="/" className="flex items-center gap-3 mr-6 group">
+                            <div className="p-2 bg-slate-50 rounded-xl group-hover:bg-blue-50 transition-colors">
+                                <img src={Logo} alt="Logo" className="h-8 w-auto" />
+                            </div>
+                        </Link>
+                        
+                        <div className="hidden lg:flex items-center gap-1">
+                            {hubs.filter(h => h.show !== false).map((hub, i) => (
+                                <HubDropdown
+                                    key={i}
+                                    label={hub.label}
+                                    icon={hub.icon}
+                                    items={hub.items}
+                                    activePaths={hub.paths}
+                                />
+                            ))}
+                        </div>
                     </div>
 
                     {/* Mobile Menu Placeholder or Minimal Links */}
@@ -194,15 +184,15 @@ const Navbar = () => {
 
                     {/* Right Side: Profile & Logout */}
                     <div className="flex items-center gap-5">
-                        <div className="hidden sm:flex flex-col items-end border-r border-slate-200 pr-5">
+                        <div className="hidden sm:flex flex-col items-end border-r border-slate-200 pr-3">
                             <span className="text-[13px] font-bold text-slate-700">
-                                {user?.name?.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                                {formatName(user?.name)}
                             </span>
                             <span className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400 mt-0.5">{user?.role}</span>
                         </div>
 
                         <div className="flex items-center gap-3">
-                            <Link to="/profile" className="h-10 w-10 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 hover:border-secondary-400 transition-all hover:scale-105 active:scale-95 group/navav shadow-sm">
+                            <Link to="/profile" className="h-9 w-9 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 hover:border-secondary-400 transition-all hover:scale-105 active:scale-95 group/navav shadow-sm">
                                 {user?.profile_picture ? (
                                     <img
                                         src={user.profile_picture.startsWith('http') ? user.profile_picture : `${BASE_URL}${user.profile_picture}`}

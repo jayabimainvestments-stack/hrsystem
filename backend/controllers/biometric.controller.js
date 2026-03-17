@@ -55,14 +55,31 @@ const processPunch = async (req, res) => {
             console.log(`[BIOMETRIC] Employee ${employee.id} Clocked-In at ${punchTime}`);
         } else {
             // Subsequent punch -> Update Clock Out to the latest punch
-            result = await db.query(
-                `UPDATE attendance 
-                 SET clock_out = $1, 
-                     updated_at = CURRENT_TIMESTAMP 
-                 WHERE id = $2 RETURNING *`,
-                [punchTime, existingAttendance.rows[0].id]
-            );
-            console.log(`[BIOMETRIC] Employee ${employee.id} Clocked-Out/Updated at ${punchTime}`);
+            // DEBOUNCE LOGIC: Only update if the new punch is at least 30 minutes after clock_in
+            const existing = existingAttendance.rows[0];
+            
+            // Handle existing.clock_in which might be "HH:mm:ss" or "HH:mm:ss+HH"
+            const [h, m, s] = existing.clock_in.split(':');
+            const clockInTime = new Date(pDate); // Use same date as punch
+            clockInTime.setHours(parseInt(h), parseInt(m), parseInt(s.split('.')[0]), 0);
+            
+            const currentPunchTime = pDate;
+            const diffMs = Math.abs(currentPunchTime - clockInTime);
+            const diffMins = diffMs / (1000 * 60);
+
+            if (diffMins > 30) {
+                result = await db.query(
+                    `UPDATE attendance 
+                     SET clock_out = $1, 
+                         updated_at = CURRENT_TIMESTAMP 
+                     WHERE id = $2 RETURNING *`,
+                    [punchTime, existing.id]
+                );
+                console.log(`[BIOMETRIC] Employee ${employee.id} Clocked-Out/Updated at ${punchTime} (${Math.round(diffMins)} mins later)`);
+            } else {
+                console.log(`[BIOMETRIC] Ignored double-tap for Employee ${employee.id} (Only ${Math.round(diffMins)} mins since Clock-In)`);
+                result = { rows: [existing] };
+            }
         }
 
         // 4. Update Device Last Sync

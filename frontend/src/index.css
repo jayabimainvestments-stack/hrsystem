@@ -42,6 +42,16 @@
     background-color: theme('colors.primary.700');
   }
 
+  .btn-primary-compact {
+    background-color: theme('colors.primary.600');
+    box-shadow: 0 10px 15px -3px theme('colors.primary.100');
+    @apply flex items-center gap-2 px-4 py-2 text-white rounded-xl font-bold hover:scale-[1.02] transition-all whitespace-nowrap;
+  }
+
+  .btn-primary-compact:hover {
+    background-color: theme('colors.primary.700');
+  }
+
   .card-premium {
     @apply bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden;
   }

@@ -45,6 +45,9 @@ const limiter = rateLimit({
 
 // Middleware
 app.use(express.json());
+// ZKTeco ADMS devices send attendance data as plain text
+app.use(express.text({ type: 'text/plain', limit: '5mb' }));
+app.use(express.raw({ type: 'application/octet-stream', limit: '5mb' }));
 const path = require('path');
 
 app.use(cors(corsOptions));
@@ -58,6 +61,9 @@ app.use(limiter); // Apply rate limiting to all requests
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
+// ZKTeco ADMS device push (no /api prefix - device expects /iclock path directly)
+app.use('/iclock', require('./routes/iclock.routes'));
+
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/employees', require('./routes/employee.routes'));
 app.use('/api/leaves', require('./routes/leave.routes'));
