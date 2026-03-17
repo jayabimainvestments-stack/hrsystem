@@ -24,6 +24,21 @@ const isEarlyDeparture = (clockOutTime) => {
     return outMinutes < 990;
 };
 
+// Helper to determine late arrival after 8:30
+const isLateArrival = (clockInTime) => {
+    if (!clockInTime || clockInTime === '--:--') return false;
+    
+    const timeMatch = clockInTime.match(/^(\d{1,2}):(\d{2})/);
+    if (!timeMatch) return false;
+    
+    const hours = parseInt(timeMatch[1], 10);
+    const minutes = parseInt(timeMatch[2], 10);
+    
+    // 08:30 is the policy start time (8 * 60 + 30 = 510 minutes)
+    const inMinutes = hours * 60 + minutes;
+    return inMinutes > 510;
+};
+
 const AttendanceManager = () => {
     const [activeTab, setActiveTab] = useState('daily'); // daily, summary, leaves, history, devices
     const [attendance, setAttendance] = useState([]);
@@ -646,7 +661,7 @@ const AttendanceManager = () => {
                                                         <div className="flex flex-col min-w-[60px]">
                                                             <span className="text-xs font-black text-slate-900">{record.clock_in || '--:--'}</span>
                                                             <span className="text-[9px] font-bold text-slate-300 uppercase mt-1 leading-none">Input</span>
-                                                            {record.late_minutes > 0 && (
+                                                            {isLateArrival(record.clock_in) && (
                                                                 <span className="text-[10px] font-bold text-red-500 mt-1 leading-none">Late Arrived</span>
                                                             )}
                                                         </div>
@@ -718,7 +733,7 @@ const AttendanceManager = () => {
                                                         <div className="flex flex-col min-w-[60px]">
                                                             <span className="text-xs font-black text-slate-900">{record.clock_in || '--:--'}</span>
                                                             <span className="text-[10px] font-bold text-slate-300 uppercase leading-none mt-1">Input (24H)</span>
-                                                            {record.late_minutes > 0 && (
+                                                            {isLateArrival(record.clock_in) && (
                                                                 <span className="text-[10px] font-bold text-red-500 leading-none mt-1">Late Arrived</span>
                                                             )}
                                                         </div>
