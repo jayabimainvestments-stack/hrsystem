@@ -7,21 +7,20 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-// Helper to determine early departure before 16:30
+// Helper to determine early departure before 16:31 (4:31 PM)
 const isEarlyDeparture = (clockOutTime) => {
     if (!clockOutTime || clockOutTime === '--:--') return false;
     
     // Parse the clockOutTime (HH:mm or HH:mm:ss) into a Date object for today
-    // We assume PM times might be 16:30 or 04:30 PM, but clock_out from DB is 24H HH:mm:ss
     const timeMatch = clockOutTime.match(/^(\d{1,2}):(\d{2})/);
     if (!timeMatch) return false;
     
     const hours = parseInt(timeMatch[1], 10);
     const minutes = parseInt(timeMatch[2], 10);
     
-    // 16:30 is the policy end time (16 * 60 + 30 = 990 minutes)
+    // 16:31 is the policy end time (16 * 60 + 31 = 991 minutes)
     const outMinutes = hours * 60 + minutes;
-    return outMinutes < 990;
+    return outMinutes < 991;
 };
 
 // Helper to determine late arrival after 8:30
@@ -554,7 +553,7 @@ const AttendanceManager = () => {
                                     Status Overlay
                                 </label>
                                 <div className="flex flex-wrap gap-2">
-                                    {['Present', 'Late Arrived', 'Early Departure', 'Absent', 'Leave'].map(status => (
+                                    {['Present', 'Late Arrived', 'Early Departure', 'Incomplete', 'Absent', 'Leave'].map(status => (
                                         <button
                                             key={status}
                                             onClick={() => setStatusSearch(statusSearch === status ? '' : status)}
@@ -563,7 +562,11 @@ const AttendanceManager = () => {
                                                 : 'bg-white text-slate-400 border-slate-50 hover:border-blue-100 hover:text-blue-500'
                                                 }`}
                                         >
-                                            {status}
+                                            {status === 'Incomplete' ? (
+                                                <div className="flex flex-col items-center">
+                                                    <span>Incomplete</span>
+                                                </div>
+                                            ) : status}
                                         </button>
                                     ))}
                                 </div>
