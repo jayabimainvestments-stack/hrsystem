@@ -49,7 +49,7 @@ const AttendanceManager = () => {
     const [employees, setEmployees] = useState([]);
     const [devices, setDevices] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState('2026-03-16');
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
 
     const [historyEmpId, setHistoryEmpId] = useState('');
@@ -97,7 +97,20 @@ const AttendanceManager = () => {
 
     const filteredAttendance = attendance.filter(record => {
         const matchesName = record.employee_name?.toLowerCase().includes(nameSearch.toLowerCase());
-        const matchesStatus = statusSearch === '' || record.status === statusSearch;
+        
+        let matchesStatus = false;
+        if (statusSearch === '') {
+            matchesStatus = true;
+        } else if (statusSearch === 'Late Arrived') {
+            matchesStatus = isLateArrival(record.clock_in);
+        } else if (statusSearch === 'Early Departure') {
+            matchesStatus = isEarlyDeparture(record.clock_out);
+        } else if (statusSearch === 'Late') {
+            matchesStatus = isLateArrival(record.clock_in) || record.status === 'Late'; 
+        } else {
+            matchesStatus = record.status === statusSearch;
+        }
+
         const matchesSource = record.source?.toLowerCase().includes(sourceSearch.toLowerCase());
         return matchesName && matchesStatus && matchesSource;
     });
@@ -371,17 +384,33 @@ const AttendanceManager = () => {
         setSyncingDevice(true);
         setSyncResult(null);
         try {
-            const { data } = await api.post('/biometric/sync-device');
-            setSyncResult({ success: true, message: data.message });
-            // Refresh attendance data after sync
-            fetchAttendance();
+            // Call the local bridge server running on the office PC (port 7700)
+            // This is needed because the ZKTeco device is on the LAN and cannot
+            // be reached by the cloud backend server.
+            const response = await fetch('http://localhost:7700/trigger-sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: AbortSignal.timeout(45000) // 45s overall timeout
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                setSyncResult({ success: true, message: data.message });
+                fetchAttendance();
+            } else {
+                setSyncResult({ success: false, message: data.message || 'Device sync failed.' });
+            }
         } catch (error) {
-            const msg = error.response?.data?.message || 'Device sync failed. Ensure the device is on the same network as this server.';
+            // If connection refused, the bridge is not running on the office PC
+            const isOffline = error.name === 'TypeError' || error.name === 'TimeoutError' || error.message?.includes('fetch');
+            const msg = isOffline
+                ? '⚠️ Local Sync Bridge is not running. Please start AUTO_SYNC_BRIDGE.bat on the office PC first.'
+                : error.message || 'Device sync failed. Ensure the device is on the same network as this server.';
             setSyncResult({ success: false, message: msg });
         } finally {
             setSyncingDevice(false);
         }
     };
+
 
     const handleSyncAttendance = async () => {
         if (!window.confirm(`Synchronize attendance with leave records for ${startDate} to ${endDate}? This will mark missing records as Absent or Leave.`)) return;
@@ -524,12 +553,12 @@ const AttendanceManager = () => {
                                     <Activity size={12} className="text-blue-500" />
                                     Status Overlay
                                 </label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {['Present', 'Late', 'Absent', 'Leave'].map(status => (
+                                <div className="flex flex-wrap gap-2">
+                                    {['Present', 'Late Arrived', 'Early Departure', 'Absent', 'Leave'].map(status => (
                                         <button
                                             key={status}
                                             onClick={() => setStatusSearch(statusSearch === status ? '' : status)}
-                                            className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all border-2 ${statusSearch === status
+                                            className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all border-2 flex-grow text-center ${statusSearch === status
                                                 ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-100'
                                                 : 'bg-white text-slate-400 border-slate-50 hover:border-blue-100 hover:text-blue-500'
                                                 }`}
@@ -544,31 +573,31 @@ const AttendanceManager = () => {
                         {/* 4. Action Stack */}
                         <div className={`lg:col-span-2 flex flex-col gap-2 justify-end ${activeTab !== 'daily' && activeTab !== 'summary' ? 'lg:col-start-11' : ''}`}>
                             {canManage && activeTab === 'daily' && (
-                                <div className="flex gap-2">
-                                    <label className="flex-1 bg-slate-900 text-white p-3 rounded-2xl cursor-pointer hover:bg-slate-800 transition-all border border-slate-900 shadow-lg shadow-slate-200 flex items-center justify-center gap-2 group">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <label className="bg-slate-900 text-white p-2 rounded-2xl cursor-pointer hover:bg-slate-800 transition-all border border-slate-900 shadow-lg shadow-slate-200 flex flex-col items-center justify-center gap-1 group">
                                         <Upload size={14} className="group-hover:-translate-y-1 transition-transform" />
-                                        <span className="text-[9px] font-black uppercase tracking-widest">CSV</span>
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-center">CSV</span>
                                         <input type="file" accept=".csv" className="hidden" onChange={handleBulkUpload} />
                                     </label>
-                                    <label className="flex-1 bg-blue-600 text-white p-3 rounded-2xl cursor-pointer hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2 group ring-2 ring-blue-50">
+                                    <label className="bg-blue-600 text-white p-2 rounded-2xl cursor-pointer hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex flex-col items-center justify-center gap-1 group ring-2 ring-blue-50">
                                         <Tablet size={14} className="group-hover:scale-110 transition-transform" />
-                                        <span className="text-[9px] font-black uppercase tracking-widest">USB Import</span>
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-center">USB</span>
                                         <input type="file" accept=".dat,.txt" className="hidden" onChange={handleBiometricUSB} />
                                     </label>
                                     <button
                                         onClick={handleSyncAttendance}
                                         disabled={syncing}
-                                        className="flex-1 bg-white text-amber-500 border-2 border-amber-50 p-3 rounded-2xl hover:bg-amber-50 transition-all flex items-center justify-center gap-2"
+                                        className="bg-white text-amber-500 border-2 border-amber-50 p-2 rounded-2xl hover:bg-amber-50 transition-all flex flex-col items-center justify-center gap-1"
                                         title="Synchronize with Leaves"
                                     >
                                         <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-                                        <span className="text-[9px] font-black uppercase tracking-widest">Sync</span>
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-center">Sync</span>
                                     </button>
                                     {/* Biometric Device Pull Button */}
                                     <button
                                         onClick={handleSyncDevice}
                                         disabled={syncingDevice}
-                                        className={`flex-1 p-3 rounded-2xl border-2 transition-all flex items-center justify-center gap-2 ${
+                                        className={`p-2 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1 ${
                                             syncingDevice
                                                 ? 'bg-purple-50 text-purple-400 border-purple-100 cursor-not-allowed'
                                                 : 'bg-purple-600 text-white border-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-100'
@@ -576,8 +605,8 @@ const AttendanceManager = () => {
                                         title="Pull latest data from ZKTeco device over LAN"
                                     >
                                         <Tablet size={14} className={syncingDevice ? 'animate-pulse' : ''} />
-                                        <span className="text-[9px] font-black uppercase tracking-widest">
-                                            {syncingDevice ? 'Syncing...' : 'Device'}
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-center">
+                                            {syncingDevice ? 'Sync...' : 'Device'}
                                         </span>
                                     </button>
                                 </div>
@@ -678,7 +707,8 @@ const AttendanceManager = () => {
                                                 <td className="px-8 py-6">
                                                     <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${record.status === 'Present' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                                                         record.status === 'Absent' ? 'bg-red-50 text-red-600 border-red-100' :
-                                                            'bg-amber-50 text-amber-600 border-amber-100'
+                                                            record.status === 'Incomplete' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                                                                'bg-amber-50 text-amber-600 border-amber-100'
                                                         }`}>
                                                         {record.status}
                                                     </span>
@@ -752,8 +782,9 @@ const AttendanceManager = () => {
                                                         <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all duration-300 w-fit ${record.status === 'Present' ? 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100/50' :
                                                             record.status === 'Late' ? 'bg-amber-50 text-amber-600 border-amber-100' :
                                                                 record.status === 'Absent' ? 'bg-red-50 text-red-600 border-red-100' :
-                                                                    record.status?.startsWith('Pending') ? 'bg-slate-50 text-slate-500 border-slate-200 border-dashed' :
-                                                                        'bg-blue-50 text-blue-600 border-blue-100' // Approved Leave Types
+                                                                    record.status === 'Incomplete' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                                                                        record.status?.startsWith('Pending') ? 'bg-slate-50 text-slate-500 border-slate-200 border-dashed' :
+                                                                            'bg-blue-50 text-blue-600 border-blue-100' // Approved Leave Types
                                                             }`}>
                                                             {record.status}
                                                         </span>
@@ -805,9 +836,10 @@ const AttendanceManager = () => {
                                 <table className="min-w-full">
                                     <thead>
                                         <tr className="bg-slate-50/50">
-                                            <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Employee</th>
+                                            <th className="px-8 py-6 text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Employee</th>
                                             <th className="px-8 py-6 text-center text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em]">Present</th>
                                             <th className="px-8 py-6 text-center text-[10px] font-black text-red-500 uppercase tracking-[0.2em]">Absent</th>
+                                            <th className="px-8 py-6 text-center text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em]">Incomplete</th>
                                             <th className="px-8 py-6 text-center text-[10px] font-black text-amber-500 uppercase tracking-[0.2em]">Late</th>
                                             <th className="px-8 py-6 text-center text-[10px] font-black text-blue-500 uppercase tracking-[0.2em]">On Leave</th>
                                         </tr>
@@ -821,6 +853,9 @@ const AttendanceManager = () => {
                                                 </td>
                                                 <td className="px-8 py-6 text-center">
                                                     <span className="inline-block w-8 h-8 rounded-full bg-red-50 text-red-600 font-black text-xs leading-8">{row.absent_days}</span>
+                                                </td>
+                                                <td className="px-8 py-6 text-center">
+                                                    <span className="inline-block w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 font-black text-xs leading-8">{row.incomplete_days || 0}</span>
                                                 </td>
                                                 <td className="px-8 py-6 text-center">
                                                     <span className="inline-block w-8 h-8 rounded-full bg-amber-50 text-amber-600 font-black text-xs leading-8">{row.late_days}</span>
@@ -967,7 +1002,8 @@ const AttendanceManager = () => {
                                                     <td className="px-8 py-6">
                                                         <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${record.status === 'Present' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                                                             record.status === 'Absent' ? 'bg-red-50 text-red-600 border-red-100' :
-                                                                'bg-amber-50 text-amber-600 border-amber-100'
+                                                                record.status === 'Incomplete' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                                                                    'bg-amber-50 text-amber-600 border-amber-100'
                                                             }`}>
                                                             {record.status}
                                                         </span>
@@ -1158,6 +1194,7 @@ const AttendanceManager = () => {
                                         >
                                             <option value="Present">Present</option>
                                             <option value="Late">Late</option>
+                                            <option value="Incomplete">Incomplete</option>
                                             <option value="Absent">Absent</option>
                                             <option value="Leave">Leave</option>
                                             <option value="Half Day">Half Day</option>

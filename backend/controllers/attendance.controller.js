@@ -58,7 +58,10 @@ const logAttendance = async (req, res) => {
                  SET clock_in = COALESCE($1, clock_in),
                      clock_out = COALESCE($2, clock_out),
                      status = COALESCE($3, status),
-                     source = COALESCE($4, source),
+                     source = CASE 
+                                WHEN source = 'System Sync' AND $4 IS NOT NULL THEN $4
+                                ELSE COALESCE($4, source)
+                              END,
                      late_minutes = $5,
                      leave_reclaimed = $6,
                      overtime_hours = $7,
@@ -264,16 +267,17 @@ const updateAttendance = async (req, res) => {
 
         let statusToSet = status;
 
-        if (lateMinutes === 0 && (status === 'Late' || !status)) {
-            statusToSet = 'Present';
-        } else if (lateMinutes > 0 && (status === 'Present' || !status)) {
-            // Respect the HR manual selection for "Present" even if late,
-            // but the auto-logic still defaults to "Late" unless explicitly overridden.
-            // We keep the statusToSet as provided in the body for the pending change.
-            statusToSet = status || 'Late';
+        if (!status || status === 'Present' || status === 'Late' || status === 'Incomplete') {
+            if (lateMinutes > 0) {
+                statusToSet = 'Late';
+            } else if (clock_in && clock_out && policy && clock_out >= policy.work_end_time) {
+                statusToSet = 'Present';
+            } else if (clock_in) {
+                statusToSet = 'Incomplete';
+            }
         }
 
-        // Instead of updating directly, create a pending change request
+        // PENDING CHANGE (Mandatory for all per user request)
         const newValue = {
             clock_in,
             clock_out,
@@ -300,7 +304,7 @@ const updateAttendance = async (req, res) => {
         );
 
         await client.query('COMMIT');
-        res.status(200).json({
+        return res.status(200).json({
             message: 'Attendance adjustment submitted for approval',
             pending: true
         });
@@ -353,6 +357,7 @@ const getMonthlySummary = async (req, res) => {
                 COUNT(*) FILTER (WHERE a.status = 'Present') as present_days,
                 COUNT(*) FILTER (WHERE a.status = 'Absent') as absent_days,
                 COUNT(*) FILTER (WHERE a.status = 'Late') as late_days,
+                COUNT(*) FILTER (WHERE a.status = 'Incomplete') as incomplete_days,
                 COUNT(*) FILTER (WHERE a.status = 'Leave') as leave_days
             FROM employees e
             JOIN users u ON e.user_id = u.id
@@ -423,7 +428,18 @@ const bulkLogAttendance = async (req, res) => {
                 overtimeHours = calculateOvertimeHours(clock_out, policy.work_end_time);
             }
 
-            const statusToSet = (lateMinutes > 0 && (!status || status === 'Present')) ? 'Late' : (status || 'Present');
+            let statusToSet = status;
+            if (!status || status === 'Present' || status === 'Late' || status === 'Incomplete') {
+                if (lateMinutes > 0) {
+                    statusToSet = 'Late';
+                } else if (clock_in && clock_out && policy && clock_out >= policy.work_end_time) {
+                    statusToSet = 'Present';
+                } else if (clock_in) {
+                    statusToSet = 'Incomplete';
+                } else {
+                    statusToSet = 'Absent';
+                }
+            }
 
             // Check if record exists
             const existing = await client.query(
@@ -450,7 +466,10 @@ const bulkLogAttendance = async (req, res) => {
                      SET clock_in = COALESCE($1, clock_in),
                          clock_out = COALESCE($2, clock_out),
                          status = COALESCE($3, status),
-                         source = COALESCE($4, source),
+                         source = CASE 
+                                    WHEN source = 'System Sync' THEN COALESCE($4, 'Bulk Import')
+                                    ELSE COALESCE($4, source)
+                                  END,
                          late_minutes = $5,
                          leave_reclaimed = $6,
                          overtime_hours = $7,
@@ -534,8 +553,8 @@ const syncAttendanceWithLeaves = async (req, res) => {
                             );
                             results.marked_leave++;
                         } else {
-                            // Only mark as Absent if the date is in the past
-                            if (dateStr < todayStr) {
+                            // Proactive marking: Mark as Absent if the date is in the past OR if it's today
+                            if (dateStr <= todayStr) {
                                 await client.query(
                                     `INSERT INTO attendance (employee_id, date, status, source) 
                                      VALUES ($1, $2, 'Absent', 'System Sync')`,

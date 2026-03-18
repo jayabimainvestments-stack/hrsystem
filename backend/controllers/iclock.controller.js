@@ -15,6 +15,7 @@
 const db = require('../config/db');
 const fs = require('fs');
 const path = require('path');
+const { calculateLateMinutes, calculateOvertimeHours } = require('../utils/attendance.utils');
 
 // Log file path for debugging
 const LOG_FILE = path.join(__dirname, '..', 'iclock.log');
@@ -134,42 +135,110 @@ const handleAttendancePush = async (req, res) => {
 
             const employeeId = empRes.rows[0].id;
 
+            // Fetch Policy for calculations
+            const policyRes = await db.query('SELECT work_start_time, work_end_time FROM attendance_policies ORDER BY id LIMIT 1');
+            const policy = policyRes.rows[0];
+
             // Check for existing attendance
             const existingRes = await db.query(
-                'SELECT id, clock_in FROM attendance WHERE employee_id = $1 AND date = $2',
+                'SELECT id, clock_in, clock_out, status, source FROM attendance WHERE employee_id = $1 AND date = $2',
                 [employeeId, punchDate]
             );
 
+            const ALLOWED_SOURCES = ['Biometric', 'Biometric-ADMS', 'System Sync', null];
+
             if (existingRes.rows.length === 0) {
-                // First punch of the day → Clock-In
+                // First punch of the day → New Record
+                let lateMinutes = 0;
+                if (policy) {
+                    lateMinutes = calculateLateMinutes(punchTime, policy.work_start_time);
+                }
+                const statusToSet = lateMinutes > 0 ? 'Late' : 'Incomplete';
+
                 await db.query(
-                    `INSERT INTO attendance (employee_id, date, clock_in, source, device_id)
-                     VALUES ($1, $2, $3, $4, $5)
+                    `INSERT INTO attendance (employee_id, date, clock_in, status, source, device_id, late_minutes)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)
                      ON CONFLICT DO NOTHING`,
-                    [employeeId, punchDate, punchTime, 'Biometric-ADMS', sn]
+                    [employeeId, punchDate, punchTime, statusToSet, 'Biometric-ADMS', sn, lateMinutes]
                 );
-                writeLog(`Clock-IN: Employee ${employeeId} at ${punchDate} ${punchTime}`);
+                writeLog(`Clock-IN (New): Employee ${employeeId} at ${punchDate} ${punchTime}`);
             } else {
                 const existing = existingRes.rows[0];
-                // Parse existing clock_in time for debounce check
-                const [h, m, s] = existing.clock_in.split(':');
-                const clockInBase = new Date(pDate);
-                clockInBase.setHours(parseInt(h), parseInt(m), parseInt(s.split('.')[0] || '0'), 0);
 
-                const diffMins = Math.abs(pDate - clockInBase) / (1000 * 60);
+                // PROTECTION: Skip automated update if record was manually edited
+                if (!ALLOWED_SOURCES.includes(existing.source)) {
+                    writeLog(`Skipping update for ${employeeId}: Manual record protected (${existing.source})`);
+                    successCount++;
+                    continue;
+                }
 
-                // Only update clock_out if the new punch is at least 30 minutes later
-                if (diffMins > 30) {
+                // PROTECTION 2: Skip if there's a pending change for this record
+                const pendingCheck = await db.query(
+                    "SELECT id FROM pending_changes WHERE entity = 'attendance' AND entity_id = $1 AND status = 'Pending'",
+                    [existing.id]
+                );
+                if (pendingCheck.rows.length > 0) {
+                    writeLog(`Skipping update for ${employeeId}: Manual correction pending approval`);
+                    successCount++;
+                    continue;
+                }
+                
+                // CASE 1: Existing record is a placeholder or has no clock_in
+                if (!existing.clock_in || existing.status === 'Absent') {
+                    let lateMinutes = 0;
+                    if (policy) {
+                        lateMinutes = calculateLateMinutes(punchTime, policy.work_start_time);
+                    }
+                    const statusToSet = lateMinutes > 0 ? 'Late' : 'Incomplete';
+
                     await db.query(
-                        `UPDATE attendance
-                         SET clock_out = GREATEST(COALESCE(clock_out, '00:00:00'), $1),
+                        `UPDATE attendance 
+                         SET clock_in = $1, 
+                             status = $2, 
+                             source = $3, 
+                             device_id = $4,
+                             late_minutes = $5,
                              updated_at = CURRENT_TIMESTAMP
-                         WHERE id = $2`,
-                        [punchTime, existing.id]
+                         WHERE id = $6`,
+                        [punchTime, statusToSet, 'Biometric-ADMS', sn, lateMinutes, existing.id]
                     );
-                    writeLog(`Clock-OUT: Employee ${employeeId} at ${punchDate} ${punchTime} (${Math.round(diffMins)} mins gap)`);
-                } else {
-                    writeLog(`Debounce skip: Employee ${employeeId}, only ${Math.round(diffMins)} mins since clock-in`);
+                    writeLog(`Clock-IN (Update Placeholder): Employee ${employeeId} at ${punchDate} ${punchTime}`);
+                } 
+                // CASE 2: Already has clock_in, update clock_out
+                else {
+                    // Parse existing clock_in time for debounce check
+                    // clock_in might be "HH:mm:ss" or with fractional seconds
+                    const clockInStr = existing.clock_in.split('.')[0]; 
+                    const [h, m, s] = clockInStr.split(':');
+                    
+                    const clockInBase = new Date(pDate);
+                    clockInBase.setHours(parseInt(h), parseInt(m), parseInt(s || '0'), 0);
+
+                    const diffMins = Math.abs(pDate - clockInBase) / (1000 * 60);
+
+                    // Only update clock_out if the new punch is at least 30 minutes later
+                    if (diffMins > 30) {
+                        let overtimeHours = 0;
+                        if (policy && policy.work_end_time) {
+                            overtimeHours = calculateOvertimeHours(punchTime, policy.work_end_time);
+                        }
+
+                        await db.query(
+                            `UPDATE attendance
+                             SET clock_out = GREATEST(COALESCE(clock_out, '00:00:00'), $1),
+                                 status = CASE 
+                                     WHEN status = 'Incomplete' AND $1 >= $4 THEN 'Present'
+                                     ELSE status 
+                                 END,
+                                 overtime_hours = $2,
+                                 updated_at = CURRENT_TIMESTAMP
+                             WHERE id = $3`,
+                            [punchTime, overtimeHours, existing.id, policy.work_end_time]
+                        );
+                        writeLog(`Clock-OUT: Employee ${employeeId} at ${punchDate} ${punchTime} (${Math.round(diffMins)} mins gap)`);
+                    } else {
+                        writeLog(`Debounce skip: Employee ${employeeId}, only ${Math.round(diffMins)} mins since clock-in`);
+                    }
                 }
             }
             successCount++;

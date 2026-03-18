@@ -12,10 +12,10 @@ echo [!] To run this automatically when PC starts:
 echo     1. Press Win+R, type 'shell:startup' and press Enter.
 echo     2. Create a shortcut of THIS file in that folder.
 echo.
-echo [*] Starting local validation server...
-start /min node server.js
-timeout /t 5 >nul
+echo [*] Starting local bridge server (port 7700)...
+start /min cmd /c "cd /d "%~dp0backend" && node local_bridge.js"
+timeout /t 3 >nul
 
 echo [*] Starting sync process...
-node local_sync.js
+node "%~dp0backend\local_sync.js"
 pause
