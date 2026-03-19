@@ -59,8 +59,8 @@ const processPunch = async (req, res) => {
             const statusToSet = lateMinutes > 0 ? 'Late' : 'Incomplete';
 
             result = await db.query(
-                `INSERT INTO attendance (employee_id, date, clock_in, status, source, device_id, late_minutes)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+                `INSERT INTO attendance (employee_id, date, clock_in, raw_clock_in, raw_clock_out, status, source, device_id, late_minutes)
+                 VALUES ($1, $2, $3, $3, $3, $4, $5, $6, $7) RETURNING *`,
                 [employee.id, punchDate, punchTime, statusToSet, 'Biometric', device.device_name, lateMinutes]
             );
             console.log(`[BIOMETRIC] Employee ${employee.id} Clocked-In (New) at ${punchTime} - Status: ${statusToSet}`);
