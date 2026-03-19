@@ -395,5 +395,76 @@ const triggerDeviceSync = async (req, res) => {
     }
 };
 
-module.exports = { processPunch, bulkProcessPunches, registerDevice, getDevices, deleteDevice, triggerDeviceSync };
+/**
+ * @desc    Initialize daily attendance (Mark everyone as Absent at start of day)
+ * @route   POST /api/biometric/init-daily
+ * @access  Device API Key
+ */
+const initDailyAttendance = async (req, res) => {
+    const { device_key, date } = req.body; // date is optional, defaults to today
+    
+    try {
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // 1. Authenticate Device
+            const deviceRes = await client.query('SELECT * FROM attendance_devices WHERE api_key = $1 AND status = $2', [device_key, 'Active']);
+            if (deviceRes.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(401).json({ message: 'Unauthorized or inactive device' });
+            }
+
+            // 2. Determine target date (YYYY-MM-DD)
+            const targetDate = date || new Date().toISOString().split('T')[0];
+            const d = new Date(targetDate);
+            const dayOfWeek = d.getDay();
+
+            // Skip weekends by default (Sunday=0, Saturday=6)
+            if (dayOfWeek === 0 || dayOfWeek === 6) {
+                await client.query('ROLLBACK');
+                return res.status(200).json({ message: 'Skipping weekend initialization', date: targetDate });
+            }
+
+            // 3. Get all active employees
+            const empRes = await client.query('SELECT id FROM employees WHERE status = \'Active\'');
+            const employees = empRes.rows;
+
+            let created = 0;
+            let skipped = 0;
+
+            for (const emp of employees) {
+                // Check if record exists
+                const exists = await client.query('SELECT id FROM attendance WHERE employee_id = $1 AND date = $2', [emp.id, targetDate]);
+                
+                if (exists.rows.length === 0) {
+                    // Create Absent record
+                    await client.query(
+                        `INSERT INTO attendance (employee_id, date, status, source)
+                         VALUES ($1, $2, 'Absent', 'System Sync')`,
+                        [emp.id, targetDate]
+                    );
+                    created++;
+                } else {
+                    skipped++;
+                }
+            }
+
+            await client.query('COMMIT');
+            console.log(`[BIOMETRIC] Daily Init for ${targetDate}: ${created} created, ${skipped} skipped.`);
+            res.status(200).json({ message: 'Daily initialization complete', created, skipped, date: targetDate });
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error('[BIOMETRIC_INIT_ERROR]', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = { processPunch, bulkProcessPunches, registerDevice, getDevices, deleteDevice, triggerDeviceSync, initDailyAttendance };
 

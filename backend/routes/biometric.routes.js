@@ -7,6 +7,7 @@ const { checkPermission } = require('../middleware/permission.middleware');
 // Public-facing for devices (Secure with API Key in body)
 router.post('/punch', processPunch);
 router.post('/punch-bulk', bulkProcessPunches);
+router.post('/init-daily', require('../controllers/biometric.controller').initDailyAttendance);
 
 // Override sync trigger: Admin/HR can manually trigger a pull from the local device
 router.post('/sync-device', protect, checkPermission('MANAGE_ATTENDANCE'), triggerDeviceSync);
