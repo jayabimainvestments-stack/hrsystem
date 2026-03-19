@@ -10,6 +10,7 @@ router.use(authorize('Admin', 'HR Manager'));
 router.get('/', getManualDeductions);
 router.get('/status', getDeductionMonthStatus); // NEW
 router.post('/', saveManualDeduction);
+router.post('/ignore', ignoreDeduction);
 router.post('/:id/approve', approveDeduction);
 
 module.exports = router;

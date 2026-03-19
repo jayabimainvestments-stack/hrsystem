@@ -255,9 +255,54 @@ const getDeductionMonthStatus = async (req, res) => {
     }
 };
 
+// @desc    Ignore deduction (Mark as skipped)
+// @route   POST /api/manual-deductions/ignore
+// @access  Private (Admin/HR)
+const ignoreDeduction = async (req, res) => {
+    const { employee_id, month } = req.body;
+
+    if (!employee_id || !month) {
+        return res.status(400).json({ message: 'Employee and Month are required' });
+    }
+
+    try {
+        // Check if entry exists
+        const checkRes = await db.query(
+            'SELECT id, status FROM attendance_deductions WHERE employee_id = $1 AND month = $2',
+            [employee_id, month]
+        );
+
+        if (checkRes.rows.length > 0) {
+            const existing = checkRes.rows[0];
+            if (existing.status === 'Processed') {
+                return res.status(400).json({ message: 'Cannot ignore processed deduction' });
+            }
+
+            // Update to Ignored
+            await db.query(
+                "UPDATE attendance_deductions SET status = 'Ignored', updated_at = NOW() WHERE id = $1",
+                [existing.id]
+            );
+        } else {
+            // Create Ignored record with 0 amounts
+            await db.query(`
+                INSERT INTO attendance_deductions 
+                (employee_id, month, deduct_days, deduct_day_rate, deduct_hours, deduct_hour_rate, total_amount, reason, status, created_by)
+                VALUES ($1, $2, 0, 0, 0, 0, 0, 'Ignored by User', 'Ignored', $3)
+            `, [employee_id, month, req.user.id]);
+        }
+
+        res.status(200).json({ message: 'Deduction ignored' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getManualDeductions,
     saveManualDeduction,
     approveDeduction,
-    getDeductionMonthStatus
+    getDeductionMonthStatus,
+    ignoreDeduction
 };
