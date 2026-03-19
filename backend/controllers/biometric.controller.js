@@ -43,6 +43,13 @@ const processPunch = async (req, res) => {
             punchTime = punch_time;
         }
 
+        const MIN_SYNC_DATE = '2026-03-16';
+        if (punchDate < MIN_SYNC_DATE) {
+            console.log(`[BIOMETRIC] Ignoring old punch from ${punchDate}`);
+            await db.query('ROLLBACK');
+            return res.status(200).json({ message: 'Ignored old punch data' });
+        }
+
         const existingAttendance = await db.query(
             'SELECT * FROM attendance WHERE employee_id = $1 AND date = $2',
             [employee.id, punchDate]
@@ -272,7 +279,13 @@ const bulkProcessPunches = async (req, res) => {
                     const existing = existingAttendance.rows[0];
                     const ALLOWED_SOURCES = ['Biometric', 'Biometric-USB', 'Biometric-ADMS', 'System Sync', null];
 
-                    // PROTECTION: Only update if existing record is from Biometric source
+                    const MIN_SYNC_DATE = '2026-03-16';
+        if (punchDate < MIN_SYNC_DATE) {
+            console.log(`[BIOMETRIC] Ignoring old punch from ${punchDate}`);
+            continue; // Skip this punch and move to the next
+        }
+
+        // Logic to prevent overwriting manual records unless from specific sources
                     if (ALLOWED_SOURCES.includes(existing.source)) {
                         // PROTECTION 2: Check for pending changes
                         const pendingCheck = await client.query(
