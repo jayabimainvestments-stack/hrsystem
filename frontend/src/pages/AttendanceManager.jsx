@@ -3,7 +3,7 @@ import api from '../services/api';
 import Navbar from '../components/Navbar';
 import {
     Calendar, Clock, User, Users, Download, Search,
-    ChevronLeft, ChevronRight, Plus, Tablet, Upload, Save, X, RefreshCw, Trash2, Activity
+    ChevronLeft, ChevronRight, Plus, Tablet, Upload, Save, X, RefreshCw, Trash2, Activity, Fingerprint
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -48,8 +48,8 @@ const AttendanceManager = () => {
     const [employees, setEmployees] = useState([]);
     const [devices, setDevices] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [startDate, setStartDate] = useState('2026-03-16');
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
 
     const [historyEmpId, setHistoryEmpId] = useState('');
     const [deptFilter, setDeptFilter] = useState('');
@@ -121,7 +121,13 @@ const AttendanceManager = () => {
     const fetchAttendance = async () => {
         setLoading(true);
         try {
-            const { data } = await api.get(`/attendance?startDate=${startDate}&endDate=${endDate}&department=${deptFilter}&employee_id=${historyEmpId}`);
+            const params = new URLSearchParams();
+            if (startDate) params.append('startDate', startDate);
+            if (endDate) params.append('endDate', endDate);
+            if (deptFilter) params.append('department', deptFilter);
+            if (historyEmpId) params.append('employee_id', historyEmpId);
+
+            const { data } = await api.get(`/attendance?${params.toString()}`);
             setAttendance(data);
 
         } catch (error) {
@@ -134,7 +140,13 @@ const AttendanceManager = () => {
     const fetchSummary = async () => {
         setLoading(true);
         try {
-            const { data } = await api.get(`/attendance/summary?startDate=${startDate}&endDate=${endDate}&department=${deptFilter}&employee_id=${historyEmpId}`);
+            const params = new URLSearchParams();
+            if (startDate) params.append('startDate', startDate);
+            if (endDate) params.append('endDate', endDate);
+            if (deptFilter) params.append('department', deptFilter);
+            if (historyEmpId) params.append('employee_id', historyEmpId);
+
+            const { data } = await api.get(`/attendance/summary?${params.toString()}`);
             setSummary(data);
         } catch (error) {
             console.error(error);
@@ -159,7 +171,12 @@ const AttendanceManager = () => {
         if (!historyEmpId) return;
         setLoading(true);
         try {
-            const { data } = await api.get(`/attendance?startDate=${startDate}&endDate=${endDate}&employee_id=${historyEmpId}`);
+            const params = new URLSearchParams();
+            if (startDate) params.append('startDate', startDate);
+            if (endDate) params.append('endDate', endDate);
+            params.append('employee_id', historyEmpId);
+
+            const { data } = await api.get(`/attendance?${params.toString()}`);
             setHistoryAttendance(data);
 
         } catch (error) {
@@ -763,16 +780,30 @@ const AttendanceManager = () => {
                                                 </td>
                                                 <td className="px-8 py-6">
                                                     <div className="flex items-center gap-3">
-                                                        <div className="flex flex-col min-w-[60px]">
-                                                            <span className="text-xs font-black text-slate-900">{record.clock_in || '--:--'}</span>
+                                                        <div className="flex flex-col min-w-[70px]">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-xs font-black text-slate-900">{record.clock_in || '--:--'}</span>
+                                                                {record.raw_clock_in && record.raw_clock_in !== record.clock_in && (
+                                                                    <div title={`Original Biometric: ${record.raw_clock_in}`} className="text-blue-400 cursor-help">
+                                                                        <Fingerprint size={12} />
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                             <span className="text-[10px] font-bold text-slate-300 uppercase leading-none mt-1">Input (24H)</span>
                                                             {isLateArrival(record.clock_in) && (
                                                                 <span className="text-[10px] font-bold text-red-500 leading-none mt-1">Late Arrived</span>
                                                             )}
                                                         </div>
                                                         <div className="h-px w-4 bg-slate-200 self-start mt-2"></div>
-                                                        <div className="flex flex-col min-w-[60px]">
-                                                            <span className="text-xs font-black text-slate-900">{record.clock_out || '--:--'}</span>
+                                                        <div className="flex flex-col min-w-[70px]">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-xs font-black text-slate-900">{record.clock_out || '--:--'}</span>
+                                                                {record.raw_clock_out && record.raw_clock_out !== record.clock_out && (
+                                                                    <div title={`Original Biometric: ${record.raw_clock_out}`} className="text-blue-400 cursor-help">
+                                                                        <Fingerprint size={12} />
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                             <span className="text-[10px] font-bold text-slate-300 uppercase leading-none mt-1">Exit (24H)</span>
                                                             {isEarlyDeparture(record.clock_out) && (
                                                                 <span className="text-[10px] font-bold text-red-500 leading-none mt-1">Early Departure</span>

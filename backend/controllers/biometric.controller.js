@@ -68,14 +68,14 @@ const processPunch = async (req, res) => {
             // Subsequent punch -> Update Clock Out to the latest punch
             // PROTECTION: If source is NOT 'Biometric', it means it was manually edited. DO NOT OVERWRITE.
             const existing = existingAttendance.rows[0];
-            const ALLOWED_SOURCES = ['Biometric', 'Biometric-ADMS', 'System Sync', null];
+            const ALLOWED_SOURCES = ['Biometric', 'Biometric-ADMS', 'System Sync', 'Manual', null];
             
             if (!ALLOWED_SOURCES.includes(existing.source)) {
-                console.log(`[BIOMETRIC] Skipping update for Employee ${employee.id} on ${punchDate} because record source is '${existing.source}' (Manual Protected)`);
+                console.log(`[BIOMETRIC] Skipping update for Employee ${employee.id} on ${punchDate} because record source is '${existing.source}' (Protected)`);
                 result = { rows: [existing] };
                 await db.query('COMMIT');
                 return res.status(200).json({
-                    message: 'Punch ignored (Manual record protected)',
+                    message: `Punch ignored (${existing.source} record protected)`,
                     attendance: existing
                 });
             }
@@ -131,6 +131,7 @@ const processPunch = async (req, res) => {
                     result = await db.query(
                         `UPDATE attendance 
                          SET clock_out = GREATEST(COALESCE(clock_out, '00:00:00'), $1),
+                             raw_clock_out = GREATEST(COALESCE(raw_clock_out, '00:00:00'), $1),
                              status = CASE 
                                  WHEN status = 'Incomplete' AND $1 >= $3 THEN 'Present'
                                  ELSE status 
@@ -147,6 +148,8 @@ const processPunch = async (req, res) => {
                     result = await db.query(
                         `UPDATE attendance 
                          SET clock_in = $1, 
+                             raw_clock_in = COALESCE(raw_clock_in, $1),
+                             raw_clock_out = GREATEST(COALESCE(raw_clock_out, '00:00:00'), $1),
                              status = CASE WHEN $3 > 0 THEN 'Late' ELSE 'Incomplete' END,
                              late_minutes = $3,
                              updated_at = CURRENT_TIMESTAMP 

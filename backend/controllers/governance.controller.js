@@ -300,7 +300,7 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
                 await client.query(
                     `UPDATE attendance 
                      SET clock_in = $1, clock_out = $2, status = $3, late_minutes = $4, overtime_hours = $5, 
-                         leave_reclaimed = $6, updated_at = NOW()
+                         leave_reclaimed = $6, source = 'Manual', updated_at = NOW()
                      WHERE id = $7`,
                     [val.clock_in, val.clock_out, val.status, val.late_minutes, val.overtime_hours, reclaimed, change.entity_id]
                 );

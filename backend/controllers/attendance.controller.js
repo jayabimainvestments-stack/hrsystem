@@ -32,11 +32,17 @@ const logAttendance = async (req, res) => {
             overtimeHours = calculateOvertimeHours(clock_out, policy.work_end_time);
         }
 
-        let statusToSet = status || 'Present';
-        if (lateMinutes > 0 && (!status || status === 'Present')) {
-            statusToSet = 'Late';
-        } else if (lateMinutes === 0 && (status === 'Late' || !status)) {
-            statusToSet = 'Present';
+        let statusToSet = status;
+        if (!status || status === 'Present' || status === 'Late' || status === 'Incomplete') {
+            if (lateMinutes > 0) {
+                statusToSet = 'Late';
+            } else if (clock_in && clock_out && policy && clock_out >= policy.work_end_time) {
+                statusToSet = 'Present';
+            } else if (clock_in) {
+                statusToSet = 'Incomplete';
+            } else {
+                statusToSet = status || 'Present';
+            }
         }
 
         const isWorkingStatus = statusToSet === 'Present' || statusToSet === 'Late';
@@ -118,6 +124,7 @@ const getMyAttendance = async (req, res) => {
             SELECT 
                 a.id, a.date::date, 
                 a.clock_in::text, a.clock_out::text, 
+                a.raw_clock_in::text, a.raw_clock_out::text,
                 a.status, a.late_minutes
             FROM attendance a
             JOIN employees e ON a.employee_id = e.id
@@ -147,6 +154,7 @@ const getAttendance = async (req, res) => {
             SELECT 
                 a.id::text, a.employee_id, a.date::date, 
                 a.clock_in::text, a.clock_out::text, 
+                a.raw_clock_in::text, a.raw_clock_out::text,
                 a.status, a.source, 
                 e.designation, u.name as employee_name, e.department,
                 a.overtime_hours
@@ -172,6 +180,8 @@ const getAttendance = async (req, res) => {
                 l.id::text, e.id as employee_id, gs.date::date as date, 
                 COALESCE(l.start_time::text, '--:--') as clock_in, 
                 COALESCE(l.end_time::text, '--:--') as clock_out, 
+                null as raw_clock_in, 
+                null as raw_clock_out,
                 CASE 
                     WHEN l.status = 'Pending' THEN 'Pending ' || l.leave_type 
                     ELSE l.leave_type 

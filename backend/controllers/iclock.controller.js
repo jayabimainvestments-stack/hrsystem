@@ -194,6 +194,8 @@ const handleAttendancePush = async (req, res) => {
                     await db.query(
                         `UPDATE attendance 
                          SET clock_in = $1, 
+                             raw_clock_in = COALESCE(raw_clock_in, $1),
+                             raw_clock_out = GREATEST(COALESCE(raw_clock_out, '00:00:00'), $1),
                              status = $2, 
                              source = $3, 
                              device_id = $4,
@@ -226,6 +228,7 @@ const handleAttendancePush = async (req, res) => {
                         await db.query(
                             `UPDATE attendance
                              SET clock_out = GREATEST(COALESCE(clock_out, '00:00:00'), $1),
+                                 raw_clock_out = GREATEST(COALESCE(raw_clock_out, '00:00:00'), $1),
                                  status = CASE 
                                      WHEN status = 'Incomplete' AND $1 >= $4 THEN 'Present'
                                      ELSE status 
