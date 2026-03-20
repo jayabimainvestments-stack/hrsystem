@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { X, Search, Plus, Trash2, Save, CreditCard, User, Calculator, Shield } from 'lucide-react';
+import { X, Search, Plus, Trash2, Save, CreditCard, User, Calculator, Shield, CheckCircle2, AlertTriangle, Clock, Activity, ChevronRight } from 'lucide-react';
 
 const AddPayroll = ({ close }) => {
     const [employees, setEmployees] = useState([]);
@@ -12,6 +12,8 @@ const AddPayroll = ({ close }) => {
     const [search, setSearch] = useState('');
     const [deptFilter, setDeptFilter] = useState('');
     const [departments, setDepartments] = useState([]);
+    const [readiness, setReadiness] = useState(null);
+    const [checkingReadiness, setCheckingReadiness] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -29,6 +31,26 @@ const AddPayroll = ({ close }) => {
         };
         fetchData();
     }, []);
+
+    useEffect(() => {
+        const fetchReadiness = async () => {
+            if (!month || !year) {
+                setReadiness(null);
+                return;
+            }
+            setCheckingReadiness(true);
+            try {
+                const res = await api.get(`/payroll/readiness/${month}/${year}`);
+                setReadiness(res.data);
+            } catch (error) {
+                console.error("Readiness check failed", error);
+                setReadiness(null);
+            } finally {
+                setCheckingReadiness(false);
+            }
+        };
+        fetchReadiness();
+    }, [month, year]);
 
     useEffect(() => {
         const fetchPreview = async () => {
@@ -203,6 +225,57 @@ const AddPayroll = ({ close }) => {
                                             />
                                         </div>
                                     </div>
+                                </section>
+
+                                {/* READINESS DASHBOARD */}
+                                <section className="space-y-6">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-1 h-6 bg-indigo-600 rounded-full"></div>
+                                            <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-800">Payroll Readiness Audit</h3>
+                                        </div>
+                                        {checkingReadiness && (
+                                            <div className="flex items-center gap-2 text-[10px] font-black text-indigo-500 uppercase tracking-widest">
+                                                <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></div> Audit in progress...
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {readiness ? (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {Object.entries(readiness.checks).map(([key, check]) => (
+                                                <div key={key} className="bg-slate-50/50 border border-slate-100 rounded-3xl p-6 hover:bg-white hover:shadow-xl hover:shadow-slate-100 transition-all group">
+                                                    <div className="flex items-start justify-between mb-3">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`p-2.5 rounded-xl ${check.status === 'Ready' ? 'bg-emerald-50 text-emerald-600' :
+                                                                check.status === 'Review' ? 'bg-amber-50 text-amber-600' :
+                                                                    'bg-rose-50 text-rose-600'
+                                                                }`}>
+                                                                {check.status === 'Ready' ? <CheckCircle2 size={16} /> :
+                                                                    check.status === 'Review' ? <AlertTriangle size={16} /> :
+                                                                        <Clock size={16} />
+                                                                }
+                                                            </div>
+                                                            <p className="text-[11px] font-black text-slate-900 uppercase tracking-wider">{check.title}</p>
+                                                        </div>
+                                                        <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${check.status === 'Ready' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' :
+                                                            check.status === 'Review' ? 'bg-amber-400 text-white shadow-lg shadow-amber-500/20' :
+                                                                'bg-slate-200 text-slate-500'
+                                                            }`}>
+                                                            {check.status}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[10px] font-bold text-slate-400 pl-1">
+                                                        {check.details}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : !month ? (
+                                        <div className="p-8 border-2 border-dashed border-slate-100 rounded-[2rem] text-center">
+                                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest italic">Select a month to run readiness audit...</p>
+                                        </div>
+                                    ) : null}
                                 </section>
 
                                 <div className="group relative bg-slate-950 rounded-[3rem] p-12 text-white shadow-2xl overflow-hidden transition-all">

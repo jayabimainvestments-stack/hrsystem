@@ -39,23 +39,29 @@ function calculateLateMinutes(clockIn, workStartTime) {
 }
 
 /**
- * Calculates overtime hours based on clock-out time and work end time policy.
+ * Calculates early departure minutes.
  * @param {string} clockOut - Clock-out time
  * @param {string} workEndTime - Policy end time
- * @returns {number} - Overtime hours (decimal)
+ * @returns {number} - Early departure minutes (0 or greater)
  */
-function calculateOvertimeHours(clockOut, workEndTime) {
+function calculateEarlyDepartureMinutes(clockOut, workEndTime) {
     const punch = timeToMinutes(clockOut);
     const policy = timeToMinutes(workEndTime);
 
     if (punch === null || policy === null) return 0;
 
-    const diff = punch - policy;
-    const hours = diff / 60;
-    return diff > 0 ? parseFloat(hours.toFixed(2)) : 0;
+    const diff = policy - punch;
+    return diff > 0 ? Math.floor(diff) : 0;
+}
+
+function calculateOvertimeHours(clockOut, workEndTime) {
+    // DECOMMISSIONED per User Request: Overtime not used in salary process
+    return 0;
 }
 
 module.exports = {
     calculateLateMinutes,
+    calculateEarlyDepartureMinutes,
     calculateOvertimeHours
 };
+

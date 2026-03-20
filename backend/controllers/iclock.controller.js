@@ -15,7 +15,8 @@
 const db = require('../config/db');
 const fs = require('fs');
 const path = require('path');
-const { calculateLateMinutes, calculateOvertimeHours } = require('../utils/attendance.utils');
+const { calculateLateMinutes } = require('../utils/attendance.utils');
+const { initializeDailyAbsences, processAttendanceFromPunches } = require('../services/attendance.service');
 
 // Log file path for debugging
 const LOG_FILE = path.join(__dirname, '..', 'iclock.log');
@@ -69,7 +70,6 @@ const handleAttendancePush = async (req, res) => {
     const sn = req.query.SN || 'UNKNOWN';
     let body = '';
 
-    // Collect raw body (it comes as text, not JSON)
     if (typeof req.body === 'string') {
         body = req.body;
     } else if (Buffer.isBuffer(req.body)) {
@@ -80,180 +80,70 @@ const handleAttendancePush = async (req, res) => {
 
     writeLog(`Push from SN: ${sn}, Body length: ${body.length} chars`);
 
-    // Parse each line
     const lines = body.split('\n').map(l => l.trim()).filter(l => l.startsWith('ATTLOG'));
 
     if (lines.length === 0) {
-        // Handle other table types (OPERLOG, etc.) - just acknowledge
-        writeLog(`No ATTLOG lines found. Acknowledging.`);
         res.set('Content-Type', 'text/plain');
         return res.status(200).send('OK');
     }
 
     writeLog(`Processing ${lines.length} attendance records from device ${sn}`);
 
-    let successCount = 0;
-    let skipCount = 0;
-    let errorCount = 0;
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        const affectedEmployeesAndDates = new Set();
+        const datesToInitialize = new Set();
 
-    for (const line of lines) {
-        // Format: ATTLOG\tUSERID\tDATETIME\tSTATUS\tVERIFY\tWORKCODE
-        const parts = line.split('\t');
-        if (parts.length < 3) { skipCount++; continue; }
+        for (const line of lines) {
+            const parts = line.split('\t');
+            if (parts.length < 3) continue;
 
-        const userId = parts[1].trim();
-        const rawDateTime = parts[2].trim(); // e.g. "2026-03-17 08:30:00"
+            const biometricId = parts[1].trim();
+            const rawDateTime = parts[2].trim();
 
-        if (!userId || !rawDateTime) { skipCount++; continue; }
-
-        try {
-            // Parse datetime: "2026-03-17 08:30:00"
             const pDate = new Date(rawDateTime.replace(' ', 'T'));
-            if (isNaN(pDate.getTime())) {
-                writeLog(`Invalid date: "${rawDateTime}" for user ${userId}`);
-                skipCount++;
-                continue;
-            }
+            if (isNaN(pDate.getTime())) continue;
 
-            const punchDate = pDate.toISOString().split('T')[0]; // YYYY-MM-DD
-            const hrs = String(pDate.getHours()).padStart(2, '0');
-            const mins = String(pDate.getMinutes()).padStart(2, '0');
-            const secs = String(pDate.getSeconds()).padStart(2, '0');
-            const punchTime = `${hrs}:${mins}:${secs}`;
+            const punchDate = pDate.toISOString().split('T')[0];
+            const punchTime = pDate.toTimeString().split(' ')[0]; // HH:mm:ss
 
-            // Get employee by biometric_id
-            const empRes = await db.query(
-                'SELECT id FROM employees WHERE biometric_id = $1',
-                [userId]
+            // 1. Audit: Insert into biometric_punches
+            await client.query(
+                `INSERT INTO biometric_punches (biometric_id, punch_time, punch_date, device_sn)
+                 VALUES ($1, $2, $3, $4)`,
+                [biometricId, punchTime, punchDate, sn]
             );
 
-            if (empRes.rows.length === 0) {
-                writeLog(`No employee mapped to biometric_id: ${userId}`);
-                skipCount++;
-                continue;
+            // 2. Identify employee
+            const empRes = await client.query('SELECT id FROM employees WHERE biometric_id = $1', [biometricId]);
+            if (empRes.rows.length > 0) {
+                const employeeId = empRes.rows[0].id;
+                affectedEmployeesAndDates.add(JSON.stringify({ employeeId, punchDate }));
+                datesToInitialize.add(punchDate);
             }
-
-            const employeeId = empRes.rows[0].id;
-
-            // Fetch Policy for calculations
-            const policyRes = await db.query('SELECT work_start_time, work_end_time FROM attendance_policies ORDER BY id LIMIT 1');
-            const policy = policyRes.rows[0];
-
-            // Check for existing attendance
-            const existingRes = await db.query(
-                'SELECT id, clock_in, clock_out, status, source FROM attendance WHERE employee_id = $1 AND date = $2',
-                [employeeId, punchDate]
-            );
-
-            const ALLOWED_SOURCES = ['Biometric', 'Biometric-ADMS', 'System Sync', null];
-
-            if (existingRes.rows.length === 0) {
-                // First punch of the day → New Record
-                let lateMinutes = 0;
-                if (policy) {
-                    lateMinutes = calculateLateMinutes(punchTime, policy.work_start_time);
-                }
-                const statusToSet = lateMinutes > 0 ? 'Late' : 'Incomplete';
-
-                await db.query(
-                    `INSERT INTO attendance (employee_id, date, clock_in, status, source, device_id, late_minutes)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7)
-                     ON CONFLICT DO NOTHING`,
-                    [employeeId, punchDate, punchTime, statusToSet, 'Biometric-ADMS', sn, lateMinutes]
-                );
-                writeLog(`Clock-IN (New): Employee ${employeeId} at ${punchDate} ${punchTime}`);
-            } else {
-                const existing = existingRes.rows[0];
-
-                // PROTECTION: Skip automated update if record was manually edited
-                if (!ALLOWED_SOURCES.includes(existing.source)) {
-                    writeLog(`Skipping update for ${employeeId}: Manual record protected (${existing.source})`);
-                    successCount++;
-                    continue;
-                }
-
-                // PROTECTION 2: Skip if there's a pending change for this record
-                const pendingCheck = await db.query(
-                    "SELECT id FROM pending_changes WHERE entity = 'attendance' AND entity_id = $1 AND status = 'Pending'",
-                    [existing.id]
-                );
-                if (pendingCheck.rows.length > 0) {
-                    writeLog(`Skipping update for ${employeeId}: Manual correction pending approval`);
-                    successCount++;
-                    continue;
-                }
-                
-                // CASE 1: Existing record is a placeholder or has no clock_in
-                if (!existing.clock_in || existing.status === 'Absent') {
-                    let lateMinutes = 0;
-                    if (policy) {
-                        lateMinutes = calculateLateMinutes(punchTime, policy.work_start_time);
-                    }
-                    const statusToSet = lateMinutes > 0 ? 'Late' : 'Incomplete';
-
-                    await db.query(
-                        `UPDATE attendance 
-                         SET clock_in = $1, 
-                             raw_clock_in = COALESCE(raw_clock_in, $1),
-                             raw_clock_out = GREATEST(COALESCE(raw_clock_out, '00:00:00'), $1),
-                             status = $2, 
-                             source = $3, 
-                             device_id = $4,
-                             late_minutes = $5,
-                             updated_at = CURRENT_TIMESTAMP
-                         WHERE id = $6`,
-                        [punchTime, statusToSet, 'Biometric-ADMS', sn, lateMinutes, existing.id]
-                    );
-                    writeLog(`Clock-IN (Update Placeholder): Employee ${employeeId} at ${punchDate} ${punchTime}`);
-                } 
-                // CASE 2: Already has clock_in, update clock_out
-                else {
-                    // Parse existing clock_in time for debounce check
-                    // clock_in might be "HH:mm:ss" or with fractional seconds
-                    const clockInStr = existing.clock_in.split('.')[0]; 
-                    const [h, m, s] = clockInStr.split(':');
-                    
-                    const clockInBase = new Date(pDate);
-                    clockInBase.setHours(parseInt(h), parseInt(m), parseInt(s || '0'), 0);
-
-                    const diffMins = Math.abs(pDate - clockInBase) / (1000 * 60);
-
-                    // Only update clock_out if the new punch is at least 30 minutes later
-                    if (diffMins > 30) {
-                        let overtimeHours = 0;
-                        if (policy && policy.work_end_time) {
-                            overtimeHours = calculateOvertimeHours(punchTime, policy.work_end_time);
-                        }
-
-                        await db.query(
-                            `UPDATE attendance
-                             SET clock_out = GREATEST(COALESCE(clock_out, '00:00:00'), $1),
-                                 raw_clock_out = GREATEST(COALESCE(raw_clock_out, '00:00:00'), $1),
-                                 status = CASE 
-                                     WHEN status = 'Incomplete' AND $1 >= $4 THEN 'Present'
-                                     ELSE status 
-                                 END,
-                                 overtime_hours = $2,
-                                 updated_at = CURRENT_TIMESTAMP
-                             WHERE id = $3`,
-                            [punchTime, overtimeHours, existing.id, policy.work_end_time]
-                        );
-                        writeLog(`Clock-OUT: Employee ${employeeId} at ${punchDate} ${punchTime} (${Math.round(diffMins)} mins gap)`);
-                    } else {
-                        writeLog(`Debounce skip: Employee ${employeeId}, only ${Math.round(diffMins)} mins since clock-in`);
-                    }
-                }
-            }
-            successCount++;
-        } catch (err) {
-            writeLog(`Error processing record for userId ${userId}: ${err.message}`);
-            errorCount++;
         }
+
+        // 3. Auto-Initialize Absences for new dates encountered
+        for (const dateStr of datesToInitialize) {
+            await initializeDailyAbsences(client, dateStr);
+        }
+
+        // 4. Process processed records from raw punches
+        for (const itemStr of affectedEmployeesAndDates) {
+            const { employeeId, punchDate } = JSON.parse(itemStr);
+            await processAttendanceFromPunches(client, employeeId, punchDate);
+        }
+
+        await client.query('COMMIT');
+        writeLog(`Successfully processed ${lines.length} logs and updated attendance registry.`);
+    } catch (err) {
+        await client.query('ROLLBACK');
+        writeLog(`Error in handleAttendancePush: ${err.message}`);
+    } finally {
+        client.release();
     }
 
-    writeLog(`Done: ${successCount} success, ${skipCount} skipped, ${errorCount} errors`);
-
-    // ZKTeco expects "OK" to confirm receipt
     res.set('Content-Type', 'text/plain');
     res.status(200).send('OK');
 };

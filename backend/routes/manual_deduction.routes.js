@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getManualDeductions, saveManualDeduction, approveDeduction, getDeductionMonthStatus } = require('../controllers/manual_deduction.controller');
+const { getManualDeductions, saveManualDeduction, approveDeduction, getDeductionMonthStatus, ignoreDeduction } = require('../controllers/manual_deduction.controller');
 const { protect, authorize } = require('../middleware/auth.middleware');
 
 // All routes are protected and restricted to Admin/HR Manager

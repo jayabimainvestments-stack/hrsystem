@@ -1,5 +1,5 @@
 const db = require('../config/db');
-const { calculateLateMinutes, calculateOvertimeHours } = require('../utils/attendance.utils');
+const { calculateLateMinutes, calculateEarlyDepartureMinutes } = require('../utils/attendance.utils');
 
 const { reconcileLeaveBalance, reverseReclaimedBalance } = require('../services/attendance.service');
 
@@ -7,7 +7,12 @@ const { reconcileLeaveBalance, reverseReclaimedBalance } = require('../services/
 // @route   POST /api/attendance
 // @access  Private (MANAGE_ATTENDANCE or Device Key)
 const logAttendance = async (req, res) => {
-    const { employee_id, date, clock_in, clock_out, status, source } = req.body;
+    let { employee_id, date, clock_in, clock_out, status, source } = req.body;
+
+    // Convert empty strings to null for time columns
+    if (clock_in === '') clock_in = null;
+    if (clock_out === '') clock_out = null;
+
     const client = await db.pool.connect();
 
     try {
@@ -22,22 +27,21 @@ const logAttendance = async (req, res) => {
         const policyRes = await client.query('SELECT work_start_time, work_end_time FROM attendance_policies ORDER BY id LIMIT 1');
         const policy = policyRes.rows[0];
         let lateMinutes = 0;
-        let overtimeHours = 0;
+        let earlyDepartureMinutes = 0;
 
         if (clock_in && policy) {
             lateMinutes = calculateLateMinutes(clock_in, policy.work_start_time);
         }
-
-        if (clock_out && policy && policy.work_end_time) {
-            overtimeHours = calculateOvertimeHours(clock_out, policy.work_end_time);
+        if (clock_out && policy) {
+            earlyDepartureMinutes = calculateEarlyDepartureMinutes(clock_out, policy.work_end_time);
         }
+
+        const shortLeaveHours = parseFloat((earlyDepartureMinutes / 60).toFixed(2));
 
         let statusToSet = status;
         if (!status || status === 'Present' || status === 'Late' || status === 'Incomplete') {
-            if (lateMinutes > 0) {
-                statusToSet = 'Late';
-            } else if (clock_in && clock_out && policy && clock_out >= policy.work_end_time) {
-                statusToSet = 'Present';
+            if (clock_in && clock_out) {
+                statusToSet = lateMinutes > 0 ? 'Late' : 'Present';
             } else if (clock_in) {
                 statusToSet = 'Incomplete';
             } else {
@@ -64,16 +68,14 @@ const logAttendance = async (req, res) => {
                  SET clock_in = COALESCE($1, clock_in),
                      clock_out = COALESCE($2, clock_out),
                      status = COALESCE($3, status),
-                     source = CASE 
-                                WHEN source = 'System Sync' AND $4 IS NOT NULL THEN $4
-                                ELSE COALESCE($4, source)
-                              END,
                      late_minutes = $5,
-                     leave_reclaimed = $6,
-                     overtime_hours = $7,
+                     short_leave_hours = $6,
+                     raw_clock_in = $1,
+                     raw_clock_out = $2,
+                     leave_reclaimed = $7,
                      updated_at = CURRENT_TIMESTAMP
                  WHERE id = $8 RETURNING *`,
-                [clock_in, clock_out, statusToSet, source, lateMinutes, reclaimed, overtimeHours, existingRec.id]
+                [clock_in, clock_out, statusToSet, source, lateMinutes, shortLeaveHours, reclaimed, existingRec.id]
             );
             await client.query('COMMIT');
             res.status(200).json(result.rows[0]);
@@ -84,9 +86,9 @@ const logAttendance = async (req, res) => {
             }
 
             const result = await client.query(
-                `INSERT INTO attendance (employee_id, date, clock_in, clock_out, status, source, late_minutes, leave_reclaimed, overtime_hours)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-                [employee_id, date, clock_in, clock_out, statusToSet, source || 'Manual', lateMinutes, reclaimed, overtimeHours]
+                `INSERT INTO attendance (employee_id, date, clock_in, clock_out, raw_clock_in, raw_clock_out, status, source, late_minutes, short_leave_hours, leave_reclaimed)
+                 VALUES ($1, $2, $3, $4, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+                [employee_id, date, clock_in, clock_out, statusToSet, source || 'Manual', lateMinutes, shortLeaveHours, reclaimed]
             );
             await client.query('COMMIT');
             res.status(200).json(result.rows[0]);
@@ -156,8 +158,7 @@ const getAttendance = async (req, res) => {
                 a.clock_in::text, a.clock_out::text, 
                 a.raw_clock_in::text, a.raw_clock_out::text,
                 a.status, a.source, 
-                e.designation, u.name as employee_name, e.department,
-                a.overtime_hours
+                e.designation, u.name as employee_name, e.department
             FROM attendance a
             JOIN employees e ON a.employee_id = e.id
             JOIN users u ON e.user_id = u.id
@@ -187,19 +188,22 @@ const getAttendance = async (req, res) => {
                     ELSE l.leave_type 
                 END as status, 
                 'Authorized Leave' as source,
-                e.designation, u.name as employee_name, e.department,
-                0 as overtime_hours
+                e.designation, u.name as employee_name, e.department
             FROM leaves l
             JOIN users u ON l.user_id = u.id
             JOIN employees e ON e.user_id = u.id
             CROSS JOIN LATERAL generate_series(l.start_date::timestamp, l.end_date::timestamp, '1 day'::interval) gs(date)
             WHERE l.status IN ('Approved', 'Pending')
-            -- Only exclude if there's a non-absence physical record
-            AND NOT EXISTS (
-                SELECT 1 FROM attendance att 
-                WHERE att.employee_id = e.id 
-                AND att.date = gs.date::date
-                AND att.status != 'Absent'
+            -- Exclude from spectrum only if it's a full-day leave AND a physical record exists
+            -- Keep Half Day and Short Leave visible even if physical attendance exists
+            AND (
+                UPPER(TRIM(l.leave_type)) IN ('HALF DAY', 'SHORT LEAVE')
+                OR NOT EXISTS (
+                    SELECT 1 FROM attendance att 
+                    WHERE att.employee_id = e.id 
+                    AND att.date = gs.date::date
+                    AND att.status != 'Absent'
+                )
             )
         ) spectrum
         WHERE 1=1
@@ -247,7 +251,12 @@ const getAttendance = async (req, res) => {
 // @route   PUT /api/attendance/:id
 // @access  Private (MANAGE_ATTENDANCE)
 const updateAttendance = async (req, res) => {
-    const { clock_in, clock_out, status } = req.body;
+    let { clock_in, clock_out, status } = req.body;
+    
+    // Convert empty strings to null for time columns
+    if (clock_in === '') clock_in = null;
+    if (clock_out === '') clock_out = null;
+
     const client = await db.pool.connect();
 
     try {
@@ -261,27 +270,26 @@ const updateAttendance = async (req, res) => {
         }
         const existing = existingRes.rows[0];
 
-        // Fetch Policy to recalculate late minutes and OT
+        // Fetch Policy to recalculate late minutes
         const policyRes = await client.query('SELECT work_start_time, work_end_time FROM attendance_policies ORDER BY id LIMIT 1');
         const policy = policyRes.rows[0];
         let lateMinutes = 0;
-        let overtimeHours = 0;
 
         if (clock_in && policy) {
             lateMinutes = calculateLateMinutes(clock_in, policy.work_start_time);
         }
 
-        if (clock_out && policy && policy.work_end_time) {
-            overtimeHours = calculateOvertimeHours(clock_out, policy.work_end_time);
+        let shortLeaveHours = 0;
+        if (clock_out && policy) {
+            const earlyDepartureMinutes = calculateEarlyDepartureMinutes(clock_out, policy.work_end_time);
+            shortLeaveHours = parseFloat((earlyDepartureMinutes / 60).toFixed(2));
         }
 
         let statusToSet = status;
 
         if (!status || status === 'Present' || status === 'Late' || status === 'Incomplete') {
-            if (lateMinutes > 0) {
-                statusToSet = 'Late';
-            } else if (clock_in && clock_out && policy && clock_out >= policy.work_end_time) {
-                statusToSet = 'Present';
+            if (clock_in && clock_out) {
+                statusToSet = lateMinutes > 0 ? 'Late' : 'Present';
             } else if (clock_in) {
                 statusToSet = 'Incomplete';
             }
@@ -293,7 +301,7 @@ const updateAttendance = async (req, res) => {
             clock_out,
             status: statusToSet,
             late_minutes: lateMinutes,
-            overtime_hours: overtimeHours
+            short_leave_hours: shortLeaveHours
         };
 
         await client.query(
@@ -429,13 +437,9 @@ const bulkLogAttendance = async (req, res) => {
         for (const rec of records) {
             const { employee_id, date, clock_in, clock_out, status, source } = rec;
             let lateMinutes = 0;
-            let overtimeHours = 0;
 
             if (clock_in && policy) {
                 lateMinutes = calculateLateMinutes(clock_in, policy.work_start_time);
-            }
-            if (clock_out && policy && policy.work_end_time) {
-                overtimeHours = calculateOvertimeHours(clock_out, policy.work_end_time);
             }
 
             let statusToSet = status;
@@ -445,7 +449,7 @@ const bulkLogAttendance = async (req, res) => {
                 } else if (clock_in && clock_out && policy && clock_out >= policy.work_end_time) {
                     statusToSet = 'Present';
                 } else if (clock_in) {
-                    statusToSet = 'Incomplete';
+                    statusToSet = 'Present';
                 } else {
                     statusToSet = 'Absent';
                 }
@@ -482,10 +486,9 @@ const bulkLogAttendance = async (req, res) => {
                                   END,
                          late_minutes = $5,
                          leave_reclaimed = $6,
-                         overtime_hours = $7,
                          updated_at = CURRENT_TIMESTAMP
-                     WHERE id = $8 RETURNING id`,
-                    [clock_in, clock_out, statusToSet, source || 'Bulk Import', lateMinutes, reclaimed, overtimeHours, existingRec.id]
+                     WHERE id = $7 RETURNING id`,
+                    [clock_in, clock_out, statusToSet, source || 'Bulk Import', lateMinutes, reclaimed, existingRec.id]
                 );
                 results.push(res.rows[0].id);
             } else {
@@ -494,9 +497,9 @@ const bulkLogAttendance = async (req, res) => {
                 }
 
                 const res = await client.query(
-                    `INSERT INTO attendance (employee_id, date, clock_in, clock_out, status, source, late_minutes, leave_reclaimed, overtime_hours)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-                    [employee_id, date, clock_in, clock_out, statusToSet, source || 'Bulk Import', lateMinutes, reclaimed, overtimeHours]
+                    `INSERT INTO attendance (employee_id, date, clock_in, clock_out, status, source, late_minutes, leave_reclaimed)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+                    [employee_id, date, clock_in, clock_out, statusToSet, source || 'Bulk Import', lateMinutes, reclaimed]
                 );
                 results.push(res.rows[0].id);
             }

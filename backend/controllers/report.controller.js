@@ -327,7 +327,6 @@ const getJournalExport = async (req, res) => {
         // Aggregate Totals
         let totalBasic = 0; // Debit Expense
         let totalAllowances = 0; // Debit Expense
-        let totalOT = 0; // Debit Expense (Need to extract from details if not in main table)
         let totalEPF_Employer = 0; // Debit Expense
         let totalETF_Employer = 0; // Debit Expense
 
@@ -356,18 +355,13 @@ const getJournalExport = async (req, res) => {
             const paye = details.find(d => d.component_name === 'Income Tax (PAYE)');
             if (paye) totalPAYE_Payable += parseFloat(paye.amount);
 
-            const ot = details.find(d => d.component_name === 'Overtime');
-            if (ot) totalOT += parseFloat(ot.amount);
         }
 
-        // Adjust Allowances to exclude OT if we track it separately
-        totalAllowances -= totalOT;
 
         // Build Rows
         // Format: Date, Account Code, Description, Debit, Credit
         journalEntries.push({ Date: date, AccountCode: '6001', Description: 'Basic Salaries', Debit: totalBasic.toFixed(2), Credit: '' });
         journalEntries.push({ Date: date, AccountCode: '6002', Description: 'Allowances', Debit: totalAllowances.toFixed(2), Credit: '' });
-        if (totalOT > 0) journalEntries.push({ Date: date, AccountCode: '6003', Description: 'Overtime', Debit: totalOT.toFixed(2), Credit: '' });
         journalEntries.push({ Date: date, AccountCode: '6004', Description: 'EPF Employer Expense', Debit: totalEPF_Employer.toFixed(2), Credit: '' });
         journalEntries.push({ Date: date, AccountCode: '6005', Description: 'ETF Employer Expense', Debit: totalETF_Employer.toFixed(2), Credit: '' });
 
@@ -416,11 +410,9 @@ const getConsolidatedSummary = async (req, res) => {
             const details = detailsRes.rows;
 
             const basic = parseFloat(row.basic_salary);
-            const otItem = details.find(d => d.component_name === 'Overtime');
-            const otAmount = otItem ? parseFloat(otItem.amount) : 0;
-            const allowances = parseFloat(row.allowances) - otAmount; // Separate OT from allowances
+            const allowances = parseFloat(row.allowances); 
 
-            const gross = basic + allowances + otAmount;
+            const gross = basic + allowances;
 
             const epf8 = parseFloat(row.epf_employee);
             const epf12 = parseFloat(row.epf_employer);
@@ -440,7 +432,6 @@ const getConsolidatedSummary = async (req, res) => {
                 'EPF No': row.epf_no,
                 'Basic Salary': basic.toFixed(2),
                 'Allowances': allowances.toFixed(2),
-                'Overtime': otAmount.toFixed(2),
                 'Gross Salary': gross.toFixed(2),
                 'EPF (8%)': epf8.toFixed(2),
                 'EPF (12%)': epf12.toFixed(2),
@@ -453,7 +444,7 @@ const getConsolidatedSummary = async (req, res) => {
 
         const fields = [
             'Employee ID', 'Name', 'Designation', 'EPF No',
-            'Basic Salary', 'Allowances', 'Overtime', 'Gross Salary',
+            'Basic Salary', 'Allowances', 'Gross Salary',
             'EPF (8%)', 'EPF (12%)', 'ETF (3%)', 'PAYE Tax', 'Other Deductions', 'Net Salary'
         ];
         const json2csvParser = new Parser({ fields });

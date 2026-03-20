@@ -17,7 +17,8 @@ const {
     deletePayroll,
     deleteAllPayrolls,
     getMonthlyOverrides,
-    approveLiability
+    approveLiability,
+    getPayrollReadiness
 } = require('../controllers/payroll.controller');
 const { protect } = require('../middleware/auth.middleware');
 const { checkPermission } = require('../middleware/permission.middleware');
@@ -40,5 +41,6 @@ router.delete('/:id', protect, checkPermission('MANAGE_PAYROLL'), auditLog('DELE
 router.post('/:id/review', protect, checkPermission('MANAGE_PAYROLL'), auditLog('REVIEW_PAYROLL', 'payroll'), reviewPayroll);
 router.post('/:id/approve', protect, checkPermission('MANAGE_PAYROLL'), auditLog('APPROVE_PAYROLL', 'payroll'), approvePayroll);
 router.get('/overrides', protect, checkPermission('MANAGE_PAYROLL'), getMonthlyOverrides);
+router.get('/readiness/:month/:year', protect, checkPermission('MANAGE_PAYROLL'), getPayrollReadiness);
 
 module.exports = router;

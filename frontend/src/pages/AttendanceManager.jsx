@@ -38,6 +38,27 @@ const isLateArrival = (clockInTime) => {
     return inMinutes > 510;
 };
 
+// Helper to ensure time is in 24H format for input fields
+const ensure24h = (timeStr) => {
+    if (!timeStr || timeStr === '--:--' || timeStr === 'null') return '';
+    
+    // Extract HH:mm:ss and AM/PM
+    const match = timeStr.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+    if (!match) return timeStr;
+    
+    let [_, h, m, s, ampm] = match;
+    let hours = parseInt(h, 10);
+    const minutes = m;
+    const seconds = s || '00';
+    
+    if (ampm) {
+        if (ampm.toUpperCase() === 'PM' && hours < 12) hours += 12;
+        if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
+    }
+    
+    return `${hours.toString().padStart(2, '0')}:${minutes}:${seconds}`;
+};
+
 const AttendanceManager = () => {
     const [activeTab, setActiveTab] = useState('daily'); // daily, summary, leaves, history, devices
     const [attendance, setAttendance] = useState([]);
@@ -56,6 +77,17 @@ const AttendanceManager = () => {
     const [departments, setDepartments] = useState([]);
 
     const [editing, setEditing] = useState(null);
+    const [showInPicker, setShowInPicker] = useState(false);
+    const [showOutPicker, setShowOutPicker] = useState(false);
+
+    // Optimized helper to prepare record for editing (pre-format times to 24H)
+    const startEditing = (record) => {
+        setEditing({
+            ...record,
+            clock_in: ensure24h(record.clock_in),
+            clock_out: record.clock_out ? ensure24h(record.clock_out) : ''
+        });
+    };
     const [adding, setAdding] = useState(false);
     const [addingDevice, setAddingDevice] = useState(false);
     const [newRecord, setNewRecord] = useState({ employee_id: '', clock_in: '', clock_out: '', status: 'Present' });
@@ -783,7 +815,7 @@ const AttendanceManager = () => {
                                                         <div className="flex flex-col min-w-[70px]">
                                                             <div className="flex items-center gap-1.5">
                                                                 <span className="text-xs font-black text-slate-900">{record.clock_in || '--:--'}</span>
-                                                                {record.raw_clock_in && record.raw_clock_in !== record.clock_in && (
+                                                                {record.raw_clock_in && record.clock_in && record.raw_clock_in !== record.clock_in && (
                                                                     <div title={`Original Biometric: ${record.raw_clock_in}`} className="text-blue-400 cursor-help">
                                                                         <Fingerprint size={12} />
                                                                     </div>
@@ -798,7 +830,7 @@ const AttendanceManager = () => {
                                                         <div className="flex flex-col min-w-[70px]">
                                                             <div className="flex items-center gap-1.5">
                                                                 <span className="text-xs font-black text-slate-900">{record.clock_out || '--:--'}</span>
-                                                                {record.raw_clock_out && record.raw_clock_out !== record.clock_out && (
+                                                                {record.raw_clock_out && record.clock_out && record.raw_clock_out !== record.clock_out && (
                                                                     <div title={`Original Biometric: ${record.raw_clock_out}`} className="text-blue-400 cursor-help">
                                                                         <Fingerprint size={12} />
                                                                     </div>
@@ -839,7 +871,7 @@ const AttendanceManager = () => {
                                                 {canManage && (
                                                     <td className="px-8 py-6 text-right">
                                                         <button
-                                                            onClick={() => setEditing(record)}
+                                                            onClick={() => startEditing(record)}
                                                             disabled={record.employee_id === employees.find(e => e.user_id === user.id)?.id}
                                                             className={`text-[10px] font-black uppercase tracking-widest transition-colors ${record.employee_id === employees.find(e => e.user_id === user.id)?.id
                                                                 ? 'text-slate-300 cursor-not-allowed'
@@ -1125,7 +1157,6 @@ const AttendanceManager = () => {
                         </div>
                     )}
                 </div>
-            </div >
 
             {adding && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1145,12 +1176,78 @@ const AttendanceManager = () => {
                                 </select>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-1">
-                                        <label className="text-xs text-gray-500">Clock In (24H)</label>
-                                        <input type="time" className="w-full border p-2 rounded" value={newRecord.clock_in} onChange={e => setNewRecord({ ...newRecord, clock_in: e.target.value })} required />
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Clock In (24H)</label>
+                                        <div className={`flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl p-2 px-3 shadow-sm group hover:border-blue-300 transition-all ${!newRecord.clock_in ? 'opacity-50' : ''}`}>
+                                            <select 
+                                                value={newRecord.clock_in ? newRecord.clock_in.split(':')[0] : ''} 
+                                                onChange={e => {
+                                                    const p = (newRecord.clock_in || '08:00:00').split(':');
+                                                    setNewRecord({...newRecord, clock_in: `${e.target.value}:${p[1] || '00'}:${p[2] || '00'}`});
+                                                }}
+                                                className="bg-transparent border-none font-bold text-base text-slate-700 outline-none cursor-pointer appearance-none"
+                                            >
+                                                {!newRecord.clock_in && <option value="">--</option>}
+                                                {[...Array(24)].map((_, i) => {
+                                                    const v = i.toString().padStart(2, '0');
+                                                    return <option key={i} value={v}>{v}</option>
+                                                })}
+                                            </select>
+                                            <span className="font-bold text-slate-300">:</span>
+                                            <select 
+                                                value={newRecord.clock_in ? (newRecord.clock_in.split(':')[1] || '00') : ''} 
+                                                onChange={e => {
+                                                    const p = (newRecord.clock_in || '08:00:00').split(':');
+                                                    setNewRecord({...newRecord, clock_in: `${p[0] || '08'}:${e.target.value}:${p[2] || '00'}`});
+                                                }}
+                                                className="bg-transparent border-none font-bold text-base text-slate-700 outline-none cursor-pointer appearance-none"
+                                            >
+                                                {!newRecord.clock_in && <option value="">--</option>}
+                                                {[...Array(60)].map((_, i) => {
+                                                    const v = i.toString().padStart(2, '0');
+                                                    return <option key={i} value={v}>{v}</option>
+                                                })}
+                                            </select>
+                                            <div className="ml-auto text-blue-400 opacity-30">
+                                                <Clock size={14} />
+                                            </div>
+                                        </div>
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="text-xs text-gray-500">Clock Out (24H)</label>
-                                        <input type="time" className="w-full border p-2 rounded" value={newRecord.clock_out} onChange={e => setNewRecord({ ...newRecord, clock_out: e.target.value })} />
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Clock Out (24H)</label>
+                                        <div className={`flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl p-2 px-3 shadow-sm group hover:border-blue-300 transition-all ${!newRecord.clock_out ? 'opacity-50' : ''}`}>
+                                            <select 
+                                                value={newRecord.clock_out ? newRecord.clock_out.split(':')[0] : ''} 
+                                                onChange={e => {
+                                                    const p = (newRecord.clock_out || '17:00:00').split(':');
+                                                    setNewRecord({...newRecord, clock_out: `${e.target.value}:${p[1] || '00'}:${p[2] || '00'}`});
+                                                }}
+                                                className="bg-transparent border-none font-bold text-base text-slate-700 outline-none cursor-pointer appearance-none"
+                                            >
+                                                {!newRecord.clock_out && <option value="">--</option>}
+                                                {[...Array(24)].map((_, i) => {
+                                                    const v = i.toString().padStart(2, '0');
+                                                    return <option key={i} value={v}>{v}</option>
+                                                })}
+                                            </select>
+                                            <span className="font-bold text-slate-300">:</span>
+                                            <select 
+                                                value={newRecord.clock_out ? (newRecord.clock_out.split(':')[1] || '00') : ''} 
+                                                onChange={e => {
+                                                    const p = (newRecord.clock_out || '17:00:00').split(':');
+                                                    setNewRecord({...newRecord, clock_out: `${p[0] || '17'}:${e.target.value}:${p[2] || '00'}`});
+                                                }}
+                                                className="bg-transparent border-none font-bold text-base text-slate-700 outline-none cursor-pointer appearance-none"
+                                            >
+                                                {!newRecord.clock_out && <option value="">--</option>}
+                                                {[...Array(60)].map((_, i) => {
+                                                    const v = i.toString().padStart(2, '0');
+                                                    return <option key={i} value={v}>{v}</option>
+                                                })}
+                                            </select>
+                                            <div className="ml-auto text-blue-400 opacity-30">
+                                                <Clock size={14} />
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="flex gap-2 pt-2">
@@ -1182,8 +1279,8 @@ const AttendanceManager = () => {
                             </div>
                         </div>
                     </div>
-                )
-            }
+                )}
+            
 
             {
                 editing && (
@@ -1199,22 +1296,129 @@ const AttendanceManager = () => {
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Clock In (24H)</label>
-                                            <input
-                                                type="time"
-                                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-bold outline-none focus:ring-2 ring-blue-500/10 transition-all text-slate-700"
-                                                value={editing.clock_in}
-                                                onChange={e => setEditing({ ...editing, clock_in: e.target.value })}
-                                                required
-                                            />
+                                            <div className={`flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-2xl p-2 px-4 shadow-sm group hover:border-blue-300 transition-all ${!editing.clock_in ? 'opacity-50' : ''}`}>
+                                                <select 
+                                                    value={editing.clock_in ? editing.clock_in.split(':')[0] : ''} 
+                                                    onChange={e => {
+                                                        const p = (editing.clock_in || '08:00:00').split(':');
+                                                        setEditing({...editing, clock_in: `${e.target.value}:${p[1] || '00'}:${p[2] || '00'}`});
+                                                    }}
+                                                    className="bg-transparent border-none font-bold text-lg text-slate-700 outline-none cursor-pointer hover:text-blue-600 appearance-none pr-1"
+                                                >
+                                                    {!editing.clock_in && <option value="">--</option>}
+                                                    {[...Array(24)].map((_, i) => {
+                                                        const v = i.toString().padStart(2, '0');
+                                                        return <option key={i} value={v}>{v}</option>
+                                                    })}
+                                                </select>
+                                                <span className="font-bold text-slate-300">:</span>
+                                                <select 
+                                                    value={editing.clock_in ? (editing.clock_in.split(':')[1] || '00') : ''} 
+                                                    onChange={e => {
+                                                        const p = (editing.clock_in || '08:00:00').split(':');
+                                                        setEditing({...editing, clock_in: `${p[0] || '08'}:${e.target.value}:${p[2] || '00'}`});
+                                                    }}
+                                                    className="bg-transparent border-none font-bold text-lg text-slate-700 outline-none cursor-pointer hover:text-blue-600 appearance-none px-1"
+                                                >
+                                                    {!editing.clock_in && <option value="">--</option>}
+                                                    {[...Array(60)].map((_, i) => {
+                                                        const v = i.toString().padStart(2, '0');
+                                                        return <option key={i} value={v}>{v}</option>
+                                                    })}
+                                                </select>
+                                                <span className="font-bold text-slate-300">:</span>
+                                                <select 
+                                                    value={editing.clock_in ? (editing.clock_in.split(':')[2] || '00') : ''} 
+                                                    onChange={e => {
+                                                        const p = (editing.clock_in || '08:00:00').split(':');
+                                                        setEditing({...editing, clock_in: `${p[0] || '08'}:${p[1] || '00'}:${e.target.value}`});
+                                                    }}
+                                                    className="bg-transparent border-none font-bold text-base text-slate-400 outline-none cursor-pointer hover:text-blue-600 appearance-none pl-1"
+                                                >
+                                                    {!editing.clock_in && <option value="">--</option>}
+                                                    {[...Array(60)].map((_, i) => {
+                                                        const v = i.toString().padStart(2, '0');
+                                                        return <option key={i} value={v}>{v}</option>
+                                                    })}
+                                                </select>
+                                                <div className="ml-auto flex items-center gap-2">
+                                                    {editing.clock_in && (
+                                                        <button 
+                                                            onClick={(e) => { e.preventDefault(); setEditing({...editing, clock_in: ''}); }}
+                                                            className="text-slate-300 hover:text-red-500 transition-colors"
+                                                            title="Clear Time"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    )}
+                                                    <div className="text-blue-500 opacity-20 group-hover:opacity-100 transition-opacity">
+                                                        <Clock size={16} />
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Clock Out (24H)</label>
-                                            <input
-                                                type="time"
-                                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-bold outline-none focus:ring-2 ring-blue-500/10 transition-all text-slate-700"
-                                                value={editing.clock_out || ''}
-                                                onChange={e => setEditing({ ...editing, clock_out: e.target.value })}
-                                            />
+                                            <div className={`flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-2xl p-2 px-4 shadow-sm group hover:border-blue-300 transition-all ${!editing.clock_out ? 'opacity-50' : ''}`}>
+                                                <select 
+                                                    value={editing.clock_out ? editing.clock_out.split(':')[0] : ''} 
+                                                    onChange={e => {
+                                                        const p = (editing.clock_out || '17:00:00').split(':');
+                                                        setEditing({...editing, clock_out: `${e.target.value}:${p[1] || '00'}:${p[2] || '00'}`});
+                                                    }}
+                                                    className="bg-transparent border-none font-bold text-lg text-slate-700 outline-none cursor-pointer hover:text-blue-600 appearance-none pr-1"
+                                                >
+                                                    {!editing.clock_out && <option value="">--</option>}
+                                                    {[...Array(24)].map((_, i) => {
+                                                        const v = i.toString().padStart(2, '0');
+                                                        return <option key={i} value={v}>{v}</option>
+                                                    })}
+                                                </select>
+                                                <span className="font-bold text-slate-300">:</span>
+                                                <select 
+                                                    value={editing.clock_out ? (editing.clock_out.split(':')[1] || '00') : ''} 
+                                                    onChange={e => {
+                                                        const p = (editing.clock_out || '17:00:00').split(':');
+                                                        setEditing({...editing, clock_out: `${p[0] || '17'}:${e.target.value}:${p[2] || '00'}`});
+                                                    }}
+                                                    className="bg-transparent border-none font-bold text-lg text-slate-700 outline-none cursor-pointer hover:text-blue-600 appearance-none px-1"
+                                                >
+                                                    {!editing.clock_out && <option value="">--</option>}
+                                                    {[...Array(60)].map((_, i) => {
+                                                        const v = i.toString().padStart(2, '0');
+                                                        return <option key={i} value={v}>{v}</option>
+                                                    })}
+                                                </select>
+                                                <span className="font-bold text-slate-300">:</span>
+                                                <select 
+                                                    value={editing.clock_out ? (editing.clock_out.split(':')[2] || '00') : ''} 
+                                                    onChange={e => {
+                                                        const p = (editing.clock_out || '17:00:00').split(':');
+                                                        setEditing({...editing, clock_out: `${p[0] || '17'}:${p[1] || '00'}:${e.target.value}`});
+                                                    }}
+                                                    className="bg-transparent border-none font-bold text-base text-slate-400 outline-none cursor-pointer hover:text-blue-600 appearance-none pl-1"
+                                                >
+                                                    {!editing.clock_out && <option value="">--</option>}
+                                                    {[...Array(60)].map((_, i) => {
+                                                        const v = i.toString().padStart(2, '0');
+                                                        return <option key={i} value={v}>{v}</option>
+                                                    })}
+                                                </select>
+                                                <div className="ml-auto flex items-center gap-2">
+                                                    {editing.clock_out && (
+                                                        <button 
+                                                            onClick={(e) => { e.preventDefault(); setEditing({...editing, clock_out: ''}); }}
+                                                            className="text-slate-300 hover:text-red-500 transition-colors"
+                                                            title="Clear Time"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    )}
+                                                    <div className="text-blue-500 opacity-20 group-hover:opacity-100 transition-opacity">
+                                                        <Clock size={16} />
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -1244,8 +1448,9 @@ const AttendanceManager = () => {
                     </div>
                 )
             }
-        </div >
-    );
-};
+        </div>
+    </div>
+);
+    };
 
 export default AttendanceManager;

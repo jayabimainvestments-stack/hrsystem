@@ -280,6 +280,10 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
 
             if (action === 'Approve') {
                 const val = typeof change.new_value === 'string' ? JSON.parse(change.new_value) : change.new_value;
+                
+                // Ensure empty strings are handled as NULL for DB consistency
+                if (val.clock_in === '') val.clock_in = null;
+                if (val.clock_out === '') val.clock_out = null;
 
                 // Get existing to check reconciliation
                 const existingRes = await client.query('SELECT * FROM attendance WHERE id = $1', [change.entity_id]);
@@ -299,10 +303,10 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
 
                 await client.query(
                     `UPDATE attendance 
-                     SET clock_in = $1, clock_out = $2, status = $3, late_minutes = $4, overtime_hours = $5, 
-                         leave_reclaimed = $6, source = 'Manual', updated_at = NOW()
+                     SET clock_in = $1, clock_out = $2, status = $3, late_minutes = $4, 
+                         short_leave_hours = $5, leave_reclaimed = $6, source = 'Manual', updated_at = NOW()
                      WHERE id = $7`,
-                    [val.clock_in, val.clock_out, val.status, val.late_minutes, val.overtime_hours, reclaimed, change.entity_id]
+                    [val.clock_in, val.clock_out, val.status, val.late_minutes, val.short_leave_hours || 0, reclaimed, change.entity_id]
                 );
             }
 

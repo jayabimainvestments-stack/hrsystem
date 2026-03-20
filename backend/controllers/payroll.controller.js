@@ -227,8 +227,8 @@ const createPayroll = async (req, res) => {
             });
         }
 
-        // 3. Process Attendance/Leave Deductions (LOP)
-        // policy is already loaded above
+        /* 
+3. Process Attendance/Leave Deductions (LOP) - GATED BY APPROVAL (Manual Entry Page)
         console.log(`[PAYROLL_ENGINE] Loading Policy for ${user_id}:`, policy);
 
         const leaveRes = await client.query(`
@@ -261,42 +261,15 @@ const createPayroll = async (req, res) => {
         const lData = leaveRes.rows[0];
         const aData = attendanceRes.rows[0];
 
-        // 3.1 Process Overtime
-        // Now fetching sum of overtime_hours from attendance table
-        const otRes = await client.query(`
-            SELECT COALESCE(SUM(overtime_hours), 0) as total_ot
-            FROM attendance a
-            JOIN employees e ON a.employee_id = e.id
-            WHERE e.user_id = $1 AND a.date::text LIKE $2
-        `, [user_id, `${datePrefix}%`]);
-
-        const otHours = parseFloat(otRes.rows[0].total_ot || 0);
-        if (otHours > 0) {
-            const hourlyRate = basicSalary > 0 ? (basicSalary / 240) : 0;
-            const otAmount = hourlyRate * 1.5 * otHours;
-            if (otAmount > 0) {
-                breakdown.push({
-                    name: 'Overtime',
-                    amount: otAmount,
-                    type: 'Earning',
-                    details: `${otHours} hours @ 1.5x`
-                });
-                totalEarnings += otAmount;
-                totalTaxable += otAmount;
-            }
-        }
-
         const fullUnpaidDays = parseFloat(lData.total_unpaid_days || 0) +
             parseFloat(aData.absent_count || 0) +
-            (parseFloat(lData.half_day_count || 0) * 0.5); // Fixed: Include half days
+            (parseFloat(lData.half_day_count || 0) * 0.5); 
 
         const totalLateHours = (parseFloat(aData.total_late_minutes || 0) / 60) +
             parseFloat(aData.total_short_leave_hours || 0) +
             parseFloat(lData.total_short_leave_hours || 0);
 
-        // Deductions based on policy
         const hourRate = policy?.late_hourly_rate > 0 ? parseFloat(policy.late_hourly_rate) : (basicSalary / 240);
-
         const dayRate = policy?.absent_day_amount > 0
             ? parseFloat(policy.absent_day_amount)
             : (basicSalary / 30) * parseFloat(policy?.absent_deduction_rate || 1);
@@ -308,7 +281,6 @@ const createPayroll = async (req, res) => {
             const totalAttendanceDeduction = absentDeduction + lateDeduction;
             const compNoPay = findInCatalog(['no pay']);
 
-            // --- Dynamic: Attendance Allowance Offset ---
             if (attendanceAllowanceIdx !== -1) {
                 let allowAmt = breakdown[attendanceAllowanceIdx].amount;
                 if (totalAttendanceDeduction <= allowAmt) {
@@ -344,8 +316,8 @@ const createPayroll = async (req, res) => {
             }
 
             totalTaxable -= totalAttendanceDeduction;
-            // Note: EPF/ETF/Welfare are calculated from data-driven bases (Rule 5+)
         }
+        */ 
 
         // RULE 5+: Welfare — calculated from accumulated Bases (Rule 5+ Data Driven)
         const welfareAmount = (welfareBase > 0) ? (welfareBase * 0.02) : 0;
@@ -1129,7 +1101,8 @@ const getPayrollPreview = async (req, res) => {
             breakdown.push({ name: `Loan Installment (Ref: ${loan.id})`, amount: installment, type: 'Deduction' });
         }
 
-        // Attendance / LOP
+        /* 
+        // Attendance / LOP - GATED BY APPROVAL (Manual Entry Page)
         const leaveRes = await db.query(`
             SELECT COALESCE(SUM(unpaid_days), 0) as total_unpaid_days,
                    COALESCE(SUM(short_leave_hours), 0) as total_short_leave_hours,
@@ -1146,23 +1119,6 @@ const getPayrollPreview = async (req, res) => {
             AND NOT EXISTS (SELECT 1 FROM leaves l WHERE l.user_id = $1 AND l.status = 'Approved' AND a.date::date BETWEEN l.start_date::date AND l.end_date::date)
         `, [user_id, `${datePrefix}%`]);
 
-        // Overtime
-        const otRes = await db.query(`
-            SELECT COALESCE(SUM(overtime_hours), 0) as total_ot
-            FROM attendance a JOIN employees e ON a.employee_id = e.id
-            WHERE e.user_id = $1 AND a.date::text LIKE $2
-        `, [user_id, `${datePrefix}%`]);
-
-        const otHours = parseFloat(otRes.rows[0].total_ot || 0);
-        if (otHours > 0) {
-            const hourlyRate = basicSalary > 0 ? (basicSalary / 240) : 0;
-            const otAmount = hourlyRate * 1.5 * otHours;
-            if (otAmount > 0) {
-                breakdown.push({ name: 'Overtime', amount: otAmount, type: 'Earning', details: `${otHours} hours @ 1.5x` });
-                totalEarnings += otAmount;
-                totalTaxable += otAmount;
-            }
-        }
 
         const fullUnpaidDays = parseFloat(leaveRes.rows[0].total_unpaid_days || 0) + parseFloat(attendanceRes.rows[0].absent_count || 0) + (parseFloat(leaveRes.rows[0].half_day_count || 0) * 0.5);
         const totalLateHours = (parseFloat(attendanceRes.rows[0].total_late_minutes || 0) / 60) + parseFloat(attendanceRes.rows[0].total_short_leave_hours || 0) + parseFloat(leaveRes.rows[0].total_short_leave_hours || 0);
@@ -1193,6 +1149,7 @@ const getPayrollPreview = async (req, res) => {
             totalTaxable -= totalAttendanceDeduction;
             epfBase -= totalAttendanceDeduction;
         }
+        */ 
 
         // Welfare
         const welfareAmount = welfareBase * 0.02;
@@ -1293,13 +1250,155 @@ const getMonthlyOverrides = async (req, res) => {
     }
 };
 
+// @desc    Check payroll readiness for a specific month
+// @route   GET /api/payroll/readiness/:month/:year
+// @access  Private (Admin/HR)
+const getPayrollReadiness = async (req, res) => {
+    const { month, year } = req.params;
+    const monthMap = {
+        'January': '01', 'February': '02', 'March': '03', 'April': '04',
+        'May': '05', 'June': '06', 'July': '07', 'August': '08',
+        'September': '09', 'October': '10', 'November': '11', 'December': '12'
+    };
+    const monthNum = monthMap[month] || '01';
+    const datePrefix = `${year}-${monthNum}`;
+
+    try {
+        // 1. Employee Context
+        const empCountRes = await db.query("SELECT COUNT(*) FROM employees WHERE employment_status = 'Active'");
+        const totalEmployees = parseInt(empCountRes.rows[0].count);
+
+        // 2. Performance Status
+        const perfRes = await db.query(
+            "SELECT COUNT(*) FROM performance_monthly_approvals WHERE month = $1 AND status = 'Approved'",
+            [datePrefix]
+        );
+        const approvedPerformance = parseInt(perfRes.rows[0].count);
+
+        // 3. Fuel Allowance Status
+        const fuelRes = await db.query(`
+            SELECT 
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE mo.status = 'Approved') as approved
+            FROM monthly_salary_overrides mo
+            JOIN salary_components sc ON mo.component_id = sc.id
+            WHERE mo.month = $1 AND LOWER(sc.name) LIKE '%fuel%'
+        `, [datePrefix]);
+        const fuelStatus = {
+            total: parseInt(fuelRes.rows[0].total),
+            approved: parseInt(fuelRes.rows[0].approved)
+        };
+
+        // 4. Attendance Deduction Status
+        const attendanceRes = await db.query(`
+            SELECT 
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE status IN ('Processed', 'Ignored')) as handled
+            FROM attendance_deductions
+            WHERE month = $1
+        `, [datePrefix]);
+        const attendanceStatus = {
+            total: parseInt(attendanceRes.rows[0].total),
+            handled: parseInt(attendanceRes.rows[0].handled)
+        };
+
+        // 5. Loan Installment Status
+        // Check for active loans that should have a payment this month
+        const loanRes = await db.query(`
+            SELECT COUNT(*) FROM employee_loans 
+            WHERE status = 'Approved'
+            AND start_date <= $1::date
+            AND end_date >= $1::date
+            AND installments_paid < num_installments
+        `, [`${datePrefix}-01`]);
+        const activeLoans = parseInt(loanRes.rows[0].count);
+
+        const loanPaymentRes = await db.query(
+            "SELECT COUNT(DISTINCT loan_id) FROM loan_payments WHERE month = $1 AND type = 'payroll'",
+            [datePrefix]
+        );
+        const loanPayments = parseInt(loanPaymentRes.rows[0].count);
+
+        // 6. Salary Advance Status
+        const advanceRes = await db.query(`
+            SELECT 
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE mo.status = 'Approved') as approved
+            FROM monthly_salary_overrides mo
+            JOIN salary_components sc ON mo.component_id = sc.id
+            WHERE mo.month = $1 AND LOWER(sc.name) LIKE '%advance%'
+        `, [datePrefix]);
+        const advanceStatus = {
+            total: parseInt(advanceRes.rows[0].total),
+            approved: parseInt(advanceRes.rows[0].approved)
+        };
+
+        // 7. General Overrides (Anything else in Draft)
+        const draftOverridesRes = await db.query(`
+            SELECT COUNT(*) FROM monthly_salary_overrides 
+            WHERE month = $1 AND status = 'Draft'
+            AND component_id NOT IN (
+                SELECT id FROM salary_components WHERE LOWER(name) LIKE '%fuel%' OR LOWER(name) LIKE '%advance%' OR LOWER(name) LIKE '%performance%'
+            )
+        `, [datePrefix]);
+        const draftOverrides = parseInt(draftOverridesRes.rows[0].count);
+
+        res.status(200).json({
+            month: datePrefix,
+            total_employees: totalEmployees,
+            checks: {
+                performance: {
+                    title: 'Performance Evaluations',
+                    status: approvedPerformance >= totalEmployees ? 'Ready' : (approvedPerformance > 0 ? 'Review' : 'Pending'),
+                    details: `${approvedPerformance} / ${totalEmployees} Approved`,
+                    priority: 1
+                },
+                fuel: {
+                    title: 'Fuel Allowances',
+                    status: (fuelStatus.total > 0 && fuelStatus.approved === fuelStatus.total) ? 'Ready' : (fuelStatus.total > 0 ? 'Review' : 'Ready'),
+                    details: fuelStatus.total > 0 ? `${fuelStatus.approved} / ${fuelStatus.total} Approved` : 'No entries for this month',
+                    priority: 2
+                },
+                attendance: {
+                    title: 'Attendance Deductions',
+                    status: (attendanceStatus.total > 0 && attendanceStatus.handled === attendanceStatus.total) ? 'Ready' : (attendanceStatus.total > 0 ? 'Review' : 'Pending'),
+                    details: attendanceStatus.total > 0 ? `${attendanceStatus.handled} / ${attendanceStatus.total} Handled` : 'Calculation not started',
+                    priority: 1
+                },
+                loans: {
+                    title: 'Loan Installments',
+                    status: (activeLoans > 0 && loanPayments >= activeLoans) ? 'Ready' : (activeLoans > 0 ? 'Review' : 'Ready'),
+                    details: activeLoans > 0 ? `${loanPayments} / ${activeLoans} Payments tracked` : 'No active loans',
+                    priority: 2
+                },
+                advances: {
+                    title: 'Salary Advances',
+                    status: (advanceStatus.total > 0 && advanceStatus.approved === advanceStatus.total) ? 'Ready' : (advanceStatus.total > 0 ? 'Review' : 'Ready'),
+                    details: advanceStatus.total > 0 ? `${advanceStatus.approved} / ${advanceStatus.total} Approved` : 'No advances recorded',
+                    priority: 2
+                },
+                other_overrides: {
+                    title: 'Other manual Overrides',
+                    status: draftOverrides === 0 ? 'Ready' : 'Review',
+                    details: draftOverrides > 0 ? `${draftOverrides} entries pending approval` : 'All items verified',
+                    priority: 3
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     createPayroll,
+    updatePayroll,
+    deletePayroll,
     getMyPayroll,
     getAllPayroll,
     getPayrollDetails,
-    updatePayroll,
-    deletePayroll,
     getLiabilities,
     payLiability,
     approveLiability,
@@ -1310,5 +1409,6 @@ module.exports = {
     approvePayroll,
     getPayrollPreview,
     deleteAllPayrolls,
-    getMonthlyOverrides
+    getMonthlyOverrides,
+    getPayrollReadiness
 };
