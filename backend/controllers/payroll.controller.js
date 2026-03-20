@@ -833,33 +833,22 @@ const getLiabilityBreakdown = async (req, res) => {
             const isEmployee = type.includes('8%');
             const isEmployer = type.includes('12%');
             
-            if (isEmployee || isEmployer) {
-                query = `
-                    SELECT u.name as employee_name, 
-                           ${isEmployee ? 'p.epf_employee' : '0'} as employee_portion, 
-                           ${isEmployer ? 'p.epf_employer' : '0'} as employer_portion, 
-                           ${isEmployee ? 'p.epf_employee' : 'p.epf_employer'} as total
-                    FROM payroll p
-                    JOIN users u ON p.user_id = u.id
-                    WHERE p.month = $1 AND ${isEmployee ? 'p.epf_employee > 0' : 'p.epf_employer > 0'}
-                `;
-            } else {
-                // Fallback for generic EPF (sum of both)
-                query = `
-                    SELECT u.name as employee_name, p.epf_employee as employee_portion, p.epf_employer as employer_portion, 
-                           (p.epf_employee + p.epf_employer) as total
-                    FROM payroll p
-                    JOIN users u ON p.user_id = u.id
-                    WHERE p.month = $1 AND (p.epf_employee > 0 OR p.epf_employer > 0)
-                `;
-            }
+            query = `
+                SELECT u.name as employee_name, p.epf_employee as employee_portion, p.epf_employer as employer_portion, 
+                       ${isEmployee ? 'p.epf_employee' : (isEmployer ? 'p.epf_employer' : '(p.epf_employee + p.epf_employer)')} as total
+                FROM payroll p
+                JOIN users u ON p.user_id = u.id
+                WHERE p.month = $1
+                ORDER BY u.name ASC
+            `;
         } else if (type.includes('ETF')) {
             query = `
                 SELECT u.name as employee_name, 0 as employee_portion, p.etf_employer as employer_portion, 
                        p.etf_employer as total
                 FROM payroll p
                 JOIN users u ON p.user_id = u.id
-                WHERE p.month = $1 AND p.etf_employer > 0
+                WHERE p.month = $1
+                ORDER BY u.name ASC
             `;
         } else if (type.includes('Welfare')) {
             query = `
@@ -867,7 +856,8 @@ const getLiabilityBreakdown = async (req, res) => {
                        p.welfare as total
                 FROM payroll p
                 JOIN users u ON p.user_id = u.id
-                WHERE p.month = $1 AND p.welfare > 0
+                WHERE p.month = $1
+                ORDER BY u.name ASC
             `;
         } else if (type === 'PAYE Tax') {
             query = `
@@ -877,12 +867,14 @@ const getLiabilityBreakdown = async (req, res) => {
                 JOIN payroll p ON pd.payroll_id = p.id
                 JOIN users u ON p.user_id = u.id
                 WHERE p.month = $1 AND pd.component_name = 'Income Tax (PAYE)'
+                ORDER BY u.name ASC
             `;
         } else {
             return res.status(400).json({ message: `Invalid statutory type: ${type}` });
         }
 
         const result = await db.query(query, [month]);
+        console.log(`[LIABILITY_BREAKDOWN] ${type} for ${month}: Found ${result.rows.length} rows`);
         res.status(200).json(result.rows);
     } catch (error) {
         res.status(500).json({ message: error.message });

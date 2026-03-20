@@ -703,7 +703,7 @@ const Payroll = () => {
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-12">
-                                                {breakdown.type === 'EPF' && (
+                                                {breakdown.type.includes('EPF') && (
                                                     <>
                                                         <div className="text-right">
                                                             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Employee (8%)</p>
