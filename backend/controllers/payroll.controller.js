@@ -666,7 +666,15 @@ const deletePayroll = async (req, res) => {
 // @access  Private
 const getMyPayroll = async (req, res) => {
     try {
-        const result = await db.query('SELECT * FROM payroll WHERE user_id = $1 ORDER BY month DESC', [req.user.id]);
+        const result = await db.query(`
+            SELECT p.*, u.name as employee_name, 
+                   COALESCE(e.epf_no, e.biometric_id, CAST(e.id AS VARCHAR)) as emp_code
+            FROM payroll p 
+            JOIN users u ON p.user_id = u.id 
+            LEFT JOIN employees e ON p.user_id = e.user_id
+            WHERE p.user_id = $1 
+            ORDER BY p.month DESC
+        `, [req.user.id]);
         res.status(200).json(result.rows);
     } catch (error) {
         res.status(500).json({ message: error.message });

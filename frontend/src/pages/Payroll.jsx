@@ -69,22 +69,37 @@ const Payroll = () => {
             const payrollRes = responses[0];
             const liabRes = isAdmin ? responses[1] : { data: [] };
 
-            setPayrolls(payrollRes.data);
-            setRawLiabilities(liabRes.data || []);
+            const liabData = liabRes.data || [];
+            const payrollData = payrollRes.data || [];
+            
+            setPayrolls(payrollData);
+            setRawLiabilities(liabData);
             if (responses[2]) {
                 setWelfareBalance(responses[2].data.balance);
             }
 
-            // Aggregate liabilities array into summary object for the selected month
-            const liabData = liabRes.data || [];
-            const filteredLiabs = liabData.filter(l => l.month === selectedMonth);
-            const summary = {
-                epf8: filteredLiabs.filter(l => l.type === 'EPF 8%').reduce((sum, l) => sum + (parseFloat(l.total_payable) - parseFloat(l.paid_amount || 0)), 0),
-                epf12: filteredLiabs.filter(l => l.type === 'EPF 12%').reduce((sum, l) => sum + (parseFloat(l.total_payable) - parseFloat(l.paid_amount || 0)), 0),
-                etf3: filteredLiabs.filter(l => l.type === 'ETF 3%').reduce((sum, l) => sum + (parseFloat(l.total_payable) - parseFloat(l.paid_amount || 0)), 0),
-                welfare: filteredLiabs.filter(l => l.type === 'Welfare 2%').reduce((sum, l) => sum + (parseFloat(l.total_payable) - parseFloat(l.paid_amount || 0)), 0),
-                statutory: filteredLiabs.reduce((sum, l) => sum + (parseFloat(l.total_payable) - parseFloat(l.paid_amount || 0)), 0),
-            };
+            // Aggregate totals for the selected month
+            let summary = { epf8: 0, epf12: 0, etf3: 0, welfare: 0, statutory: 0 };
+            
+            if (isAdmin) {
+                const filteredLiabs = liabData.filter(l => l.month === selectedMonth);
+                summary = {
+                    epf8: filteredLiabs.filter(l => l.type === 'EPF 8%').reduce((sum, l) => sum + (parseFloat(l.total_payable) - parseFloat(l.paid_amount || 0)), 0),
+                    epf12: filteredLiabs.filter(l => l.type === 'EPF 12%').reduce((sum, l) => sum + (parseFloat(l.total_payable) - parseFloat(l.paid_amount || 0)), 0),
+                    etf3: filteredLiabs.filter(l => l.type === 'ETF 3%').reduce((sum, l) => sum + (parseFloat(l.total_payable) - parseFloat(l.paid_amount || 0)), 0),
+                    welfare: filteredLiabs.filter(l => l.type === 'Welfare 2%').reduce((sum, l) => sum + (parseFloat(l.total_payable) - parseFloat(l.paid_amount || 0)), 0),
+                    statutory: filteredLiabs.reduce((sum, l) => sum + (parseFloat(l.total_payable) - parseFloat(l.paid_amount || 0)), 0),
+                };
+            } else {
+                const monthPayroll = payrollData.filter(p => p.month === selectedMonth);
+                summary = {
+                    epf8: monthPayroll.reduce((sum, p) => sum + parseFloat(p.epf_employee || 0), 0),
+                    epf12: monthPayroll.reduce((sum, p) => sum + parseFloat(p.epf_employer || 0), 0),
+                    etf3: monthPayroll.reduce((sum, p) => sum + parseFloat(p.etf_employer || 0), 0),
+                    welfare: monthPayroll.reduce((sum, p) => sum + parseFloat(p.welfare || 0), 0),
+                    statutory: monthPayroll.reduce((sum, p) => sum + parseFloat(p.epf_employee || 0) + parseFloat(p.epf_employer || 0) + parseFloat(p.etf_employer || 0), 0),
+                };
+            }
             setLiabilities(summary);
         } catch (error) {
             console.error("Error fetching payroll data", error);
