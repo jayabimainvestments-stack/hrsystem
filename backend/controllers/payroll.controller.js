@@ -1269,10 +1269,10 @@ const getPayrollReadiness = async (req, res) => {
         const totalEmployees = parseInt(empCountRes.rows[0].count);
 
         // 2. Performance Status
-        const perfRes = await db.query(
-            "SELECT COUNT(*) FROM performance_monthly_approvals WHERE month = $1 AND status = 'Approved'",
-            [datePrefix]
-        );
+        const perfRes = await db.query(`
+            SELECT COUNT(*) FROM performance_monthly_approvals 
+            WHERE month = $1 AND status = 'Approved'
+        `, [datePrefix]);
         const approvedPerformance = parseInt(perfRes.rows[0].count);
 
         // 3. Fuel Allowance Status
