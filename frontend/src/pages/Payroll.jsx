@@ -113,7 +113,8 @@ const Payroll = () => {
             const response = await api.get(`/payroll/liabilities/breakdown?month=${month}&type=${type}`);
             setBreakdown({ month, type, data: response.data });
         } catch (error) {
-            alert('Failed to fetch contribution matrix');
+            console.error(error);
+            alert(`Failed to fetch contribution matrix: ${error.response?.data?.message || error.message}`);
         }
     };
 
