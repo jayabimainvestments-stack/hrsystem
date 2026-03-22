@@ -14,6 +14,7 @@ app.set('trust proxy', 1);
 // CORS Configuration - allow Vercel frontend and local dev
 const allowedOrigins = [
     /\.vercel\.app$/,      // All Vercel deployments
+    /\.hf\.space$/,        // Hugging Face Spaces
     /^http:\/\/localhost/,  // Local development
     /^http:\/\/192\.168\./  // LAN access
 ];
