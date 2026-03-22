@@ -165,8 +165,22 @@ const updateEmployee = async (req, res) => {
         let pendingCount = 0;
         const requestReason = req.body.reason || 'Routine update';
 
-        const sensitiveFields = ['nic_passport', 'designation', 'department', 'employment_status', 'biometric_id', 'epf_no'];
-        for (const field of sensitiveFields) {
+        // Split fields by entity for correct governance tracking
+        const userSensitiveFields = ['name', 'email'];
+        const employeeSensitiveFields = ['nic_passport', 'designation', 'department', 'employment_status', 'biometric_id', 'epf_no', 'phone', 'address', 'dob', 'gender', 'marital_status'];
+
+        for (const field of userSensitiveFields) {
+            if (req.body[field] !== undefined && String(req.body[field]) !== String(current[field])) {
+                await db.query(
+                    `INSERT INTO pending_changes (entity, entity_id, field_name, old_value, new_value, requested_by, reason)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    ['users', userId, field, current[field], req.body[field], req.user.id, requestReason]
+                );
+                pendingCount++;
+            }
+        }
+
+        for (const field of employeeSensitiveFields) {
             if (req.body[field] !== undefined && String(req.body[field]) !== String(current[field])) {
                 await db.query(
                     `INSERT INTO pending_changes (entity, entity_id, field_name, old_value, new_value, requested_by, reason)
@@ -197,57 +211,30 @@ const updateEmployee = async (req, res) => {
             }
         }
 
-        // 3. Update Non-Sensitive User/Employee fields directly
-        if (name || email || role || req.body.password) {
-            let userUpdateQuery = 'UPDATE users SET name = COALESCE($1, name), email = COALESCE($2, email), role = COALESCE($5, role)';
-            let params = [name, email, userId];
+        // 3. Update ONLY Password directly (if Admin)
+        if (req.body.password && req.user.role === 'Admin') {
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(req.body.password, salt);
+            await db.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
+        }
 
-            if (req.body.password && req.user.role === 'Admin') {
-                const salt = await bcrypt.genSalt(10);
-                const hashedPassword = await bcrypt.hash(req.body.password, salt);
-                userUpdateQuery += ', password = $4';
-                params.push(hashedPassword);
-            }
-
-            userUpdateQuery += ' WHERE id = $3';
-            params.push(role); // Use pushed index logic if COALESCE handles nulls or just add it. 
-            // Actually, params order: 1:name, 2:email, 3:userId, 4:password (optional), 5:role
-            // Let's refine the query to be safer.
-
-            await db.query(`
-                UPDATE users 
-                SET name = COALESCE($1, name), 
-                    email = COALESCE($2, email), 
-                    role = COALESCE($4, role)
-                WHERE id = $3`,
-                [name, email, userId, role]
-            );
-
-            // Handle password separately for clarity since it needs hashing
-            if (req.body.password && req.user.role === 'Admin') {
-                const salt = await bcrypt.genSalt(10);
-                const hashedPassword = await bcrypt.hash(req.body.password, salt);
-                await db.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
-            }
+        // Handle role update (Admin only, usually immediate as it's a security/permission thing)
+        if (role && req.user.role === 'Admin') {
+            await db.query('UPDATE users SET role = $1 WHERE id = $2', [role, userId]);
         }
 
         const empContact = emergency_contact ? JSON.stringify(emergency_contact) : null;
         const result = await db.query(
             `UPDATE employees 
-             SET phone = COALESCE($1, phone), 
-                 address = COALESCE($2, address),
-                 dob = COALESCE($3, dob),
-                 gender = COALESCE($4, gender),
-                 marital_status = COALESCE($5, marital_status),
-                 blood_group = COALESCE($6, blood_group),
-                 emergency_contact = COALESCE($7, emergency_contact),
-                 hire_date = COALESCE($8, hire_date),
-                 is_epf_eligible = COALESCE($9, is_epf_eligible),
-                 is_etf_eligible = COALESCE($10, is_etf_eligible)
-             WHERE id = $11 RETURNING *`,
-            [phone, address, dob, gender, marital_status, blood_group, empContact, hire_date,
+             SET hire_date = COALESCE($1, hire_date), 
+                 is_epf_eligible = COALESCE($2, is_epf_eligible),
+                 is_etf_eligible = COALESCE($3, is_etf_eligible),
+                 emergency_contact = COALESCE($4, emergency_contact)
+             WHERE id = $5 RETURNING *`,
+            [hire_date,
                 is_epf_eligible === undefined ? current.is_epf_eligible : is_epf_eligible,
                 is_etf_eligible === undefined ? current.is_etf_eligible : is_etf_eligible,
+                empContact,
                 id]
         );
 

@@ -12,6 +12,8 @@ const getPendingChanges = async (req, res) => {
             SELECT p.*, u.name as requester_name, 
                    CASE 
                      WHEN p.entity = 'attendance' THEN 'ATTENDANCE' 
+                     WHEN p.entity = 'employees' OR p.entity = 'users' THEN 'PROFILE'
+                     WHEN p.entity = 'employee_bank_details' THEN 'BANK'
                      ELSE 'SALARY' 
                    END as type,
                    COALESCE(tu.name, bank_u.name, att_u.name, emp_direct.name) as target_name
@@ -200,7 +202,7 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
             throw new Error('Segregation of duties: You cannot approve/reject your own request.');
         }
 
-        if (type === 'SALARY') {
+        if (type === 'SALARY' || type === 'PROFILE' || type === 'BANK') {
             const changeRes = await client.query('SELECT * FROM pending_changes WHERE id = $1', [id]);
             if (changeRes.rows.length === 0) throw new Error('Request not found');
             const change = changeRes.rows[0];
@@ -247,16 +249,22 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
                             [change.entity_id, componentId, amount]
                         );
                     }
-                } else if (change.entity === 'salary_structures') {
-                    // Legacy structure update
+                } else if (change.entity === 'salary_structures' || change.entity === 'employee_salary_structure') {
+                    // Salary structure update
                     await client.query(
-                        `UPDATE salary_structures SET ${change.field_name} = $1 WHERE employee_id = $2`,
+                        `UPDATE employee_salary_structure SET ${change.field_name} = $1 WHERE employee_id = $2`,
                         [change.new_value, change.entity_id]
                     );
                 } else if (change.entity === 'employees') {
                     // Sensitive employee data update
                     await client.query(
                         `UPDATE employees SET ${change.field_name} = $1 WHERE id = $2`,
+                        [change.new_value, change.entity_id]
+                    );
+                } else if (change.entity === 'users') {
+                    // User record update (e.g. name, email)
+                    await client.query(
+                        `UPDATE users SET ${change.field_name} = $1 WHERE id = $2`,
                         [change.new_value, change.entity_id]
                     );
                 } else if (change.entity === 'employee_bank_details') {

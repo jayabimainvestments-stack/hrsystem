@@ -63,7 +63,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     const INTERVAL_TIME = 10000; // Check every 10 seconds
-    const TIMEOUT_TIME = 1 * 60 * 1000; // 1 minute
+    const TIMEOUT_TIME = 3 * 60 * 1000; // 3 minutes
     const ACTIVITY_KEY = 'last_hr_activity';
 
     const checkInactivity = () => {

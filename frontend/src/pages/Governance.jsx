@@ -198,6 +198,28 @@ const Governance = () => {
                 );
             }
 
+            if (change.type === 'PROFILE' || change.type === 'BANK') {
+                return (
+                    <div className="grid grid-cols-2 gap-4 mt-4 p-5 bg-indigo-50/30 rounded-2xl border border-indigo-100/20">
+                        <div className="space-y-1">
+                            <p className="text-[10px] font-black text-indigo-600/50 uppercase tracking-widest leading-none mb-1">Proposed Change</p>
+                            <p className="text-sm font-black text-slate-900 leading-tight uppercase">
+                                {change.field_name.replace(/_/g, ' ')}
+                            </p>
+                            <p className="text-sm font-bold text-indigo-600 mt-1">
+                                {String(change.new_value)}
+                            </p>
+                        </div>
+                        <div className="space-y-1 border-l border-indigo-100/30 pl-4 text-nowrap">
+                            <p className="text-[10px] font-black text-indigo-600/50 uppercase tracking-widest leading-none mb-1">Previous Value</p>
+                            <p className="text-xs font-bold text-slate-400 line-through">
+                                {change.old_value || '—'}
+                            </p>
+                        </div>
+                    </div>
+                );
+            }
+
             if (change.field_name === 'MULTIPLE_COMPONENTS') {
                 return (
                     <div className="mt-4 space-y-3">
@@ -232,21 +254,26 @@ const Governance = () => {
                 );
             }
 
+            // Fallback for SALARY individual components
+            const isAmount = change.field_name.startsWith('COMPONENT_') || change.type === 'SALARY';
+            
             return (
                 <div className="grid grid-cols-3 gap-6 mt-4 p-6 bg-slate-50/50 rounded-2xl border border-slate-100">
                     <div className="space-y-1">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount</p>
-                        <p className="text-lg font-black text-slate-900 tracking-tight">LKR {Number(payload.amount).toLocaleString()}</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isAmount ? 'Amount' : 'New Value'}</p>
+                        <p className="text-lg font-black text-slate-900 tracking-tight">
+                            {isAmount ? `LKR ${Number(change.new_value).toLocaleString()}` : String(change.new_value)}
+                        </p>
                     </div>
-                    {(payload.quantity > 0) && (
+                    {(payload && payload.quantity > 0) && (
                         <div className="space-y-1 border-x border-slate-200 px-6">
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quantity / Liters</p>
                             <p className="text-lg font-black text-blue-600 tracking-tight">{(payload.quantity || 0)}L</p>
                         </div>
                     )}
                     <div className="space-y-1">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Type</p>
-                        <p className="text-xs font-black text-slate-500 uppercase tracking-widest leading-none">Standard Fixed Component</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Field</p>
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-widest leading-none">{change.field_name.replace(/_/g, ' ')}</p>
                     </div>
                 </div>
             );
@@ -332,14 +359,17 @@ const Governance = () => {
                                 <div className="flex items-start justify-between">
                                     <div className="flex items-center gap-4">
                                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg ${change.type === 'SALARY' ? 'bg-indigo-500 shadow-indigo-200' :
-                                            change.type === 'LEAVE' ? 'bg-emerald-500 shadow-emerald-200' :
-                                                change.type === 'LOAN' ? 'bg-blue-500 shadow-blue-200' :
-                                                    change.type === 'LOAN_PAYMENT' ? 'bg-emerald-600 shadow-emerald-200' :
-                                                        change.type === 'FINANCIAL' ? 'bg-amber-500 shadow-amber-200' :
-                                                            change.type === 'PERFORMANCE' ? 'bg-amber-600 shadow-amber-200' :
-                                                                'bg-rose-500 shadow-rose-200'
+                                            change.type === 'PROFILE' ? 'bg-blue-600 shadow-blue-200' :
+                                                change.type === 'BANK' ? 'bg-slate-700 shadow-slate-200' :
+                                                    change.type === 'LEAVE' ? 'bg-emerald-500 shadow-emerald-200' :
+                                                        change.type === 'LOAN' ? 'bg-blue-500 shadow-blue-200' :
+                                                            change.type === 'LOAN_PAYMENT' ? 'bg-emerald-600 shadow-emerald-200' :
+                                                                change.type === 'FINANCIAL' ? 'bg-amber-500 shadow-amber-200' :
+                                                                    change.type === 'PERFORMANCE' ? 'bg-amber-600 shadow-amber-200' :
+                                                                        'bg-rose-500 shadow-rose-200'
                                             }}`}>
-                                            {change.type === 'SALARY' && <Filter size={20} />}
+                                            {(change.type === 'SALARY' || change.type === 'BANK') && <Filter size={20} />}
+                                            {change.type === 'PROFILE' && <User size={20} />}
                                             {change.type === 'LEAVE' && <Clock size={20} />}
                                             {change.type === 'LOAN' && <Shield size={20} />}
                                             {change.type === 'LOAN_PAYMENT' && <ArrowRight size={20} />}
