@@ -15,6 +15,7 @@ const FuelAllowance = () => {
     const [error, setError] = useState(null);
     const [isScraping, setIsScraping] = useState(false);
     const [calculating, setCalculating] = useState(false);
+    const [selectedBreakdown, setSelectedBreakdown] = useState(null); // { name, data: [] }
 
     // New Request State
     const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
@@ -460,7 +461,14 @@ const FuelAllowance = () => {
                                                     </td>
                                                      <td className="px-8 py-6 text-right">
                                                         <div className="flex flex-col items-end gap-1">
-                                                            <div className="flex items-center justify-end gap-2">
+                                                            <div className="flex items-center justify-end gap-2 group-hover:translate-x-[-4px] transition-transform">
+                                                                <button 
+                                                                    onClick={() => setSelectedBreakdown({ name: emp.name, data: splitResults[emp.id]?.dailyBreakdown || [] })}
+                                                                    className="p-1.5 hover:bg-blue-50 text-blue-400 hover:text-blue-600 rounded-lg transition-colors mr-1"
+                                                                    title="View Daily Breakdown"
+                                                                >
+                                                                    <Clock size={16} />
+                                                                </button>
                                                                 <span className="text-lg font-black text-slate-900">
                                                                     {Number(calculateTotal(emp.id)).toLocaleString()}
                                                                 </span>
@@ -569,6 +577,89 @@ const FuelAllowance = () => {
                             </div>
                         ))
                     )}
+                </div>
+            )}
+            {/* Daily Breakdown Modal */}
+            {selectedBreakdown && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-white rounded-[2.5rem] w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-300 overflow-hidden">
+                        <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
+                                    <div className="p-2 bg-blue-600 rounded-xl text-white">
+                                        <Clock size={20} />
+                                    </div>
+                                    Daily Breakdown
+                                </h3>
+                                <p className="text-slate-500 font-bold text-xs mt-1 uppercase tracking-wider">{selectedBreakdown.name}</p>
+                            </div>
+                            <button 
+                                onClick={() => setSelectedBreakdown(null)}
+                                className="p-3 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-2xl transition-all"
+                            >
+                                <XCircle size={24} />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-8 pt-4">
+                            {selectedBreakdown.data.length === 0 ? (
+                                <div className="py-20 text-center">
+                                    <Droplet size={48} className="mx-auto text-slate-200 mb-4 animate-pulse" />
+                                    <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No split data available for this selection.</p>
+                                </div>
+                            ) : (
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b border-slate-100">
+                                            <th className="py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</th>
+                                            <th className="py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Price (LKR/L)</th>
+                                            <th className="py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Quanity (L)</th>
+                                            <th className="py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount (LKR)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {selectedBreakdown.data.map((row, idx) => (
+                                            <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                                <td className="py-4 font-bold text-slate-700 text-sm">
+                                                    {new Date(row.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                </td>
+                                                <td className="py-4 text-center font-black text-slate-900 text-sm">
+                                                    {row.price.toFixed(2)}
+                                                </td>
+                                                <td className="py-4 text-center font-bold text-slate-500 text-sm italic">
+                                                    {row.liters.toFixed(2)}
+                                                </td>
+                                                <td className="py-4 text-right">
+                                                    <span className="font-black text-blue-600 text-sm">{row.amount.toLocaleString()}</span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr className="border-t-2 border-slate-100 bg-slate-50/30">
+                                            <td colSpan="3" className="py-6 px-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                Total Allowance
+                                            </td>
+                                            <td className="py-6 text-right">
+                                                <span className="text-xl font-black text-slate-900">
+                                                    LKR {selectedBreakdown.data.reduce((sum, r) => sum + r.amount, 0).toLocaleString()}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            )}
+                        </div>
+                        
+                        <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex justify-end">
+                            <button 
+                                onClick={() => setSelectedBreakdown(null)}
+                                className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-slate-200 hover:scale-105 active:scale-95 transition-all"
+                            >
+                                Close Details
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

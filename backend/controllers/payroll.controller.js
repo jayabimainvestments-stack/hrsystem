@@ -59,11 +59,12 @@ const calculateSplitFuelAllowance = async (client, totalLiters, startDate, endDa
         const holidays = new Set(holidayRes.rows.map(h => h.date.split(' ')[0]));
         workingDays = workingDays.filter(d => !holidays.has(d));
 
-        if (workingDays.length === 0) return { totalAmount: 0, reason: "No working days in period" };
+        if (workingDays.length === 0) return { totalAmount: 0, reason: "No working days in period", dailyBreakdown: [] };
 
         const dailyQuota = totalLiters / workingDays.length;
         let totalAmount = 0;
         let priceSegments = {}; // { price: days }
+        let dailyBreakdown = [];
 
         // 3. Calculate daily amount based on price history
         for (const date of workingDays) {
@@ -74,9 +75,16 @@ const calculateSplitFuelAllowance = async (client, totalLiters, startDate, endDa
             `, [date]);
             
             const price = priceRes.rows.length > 0 ? parseFloat(priceRes.rows[0].price_per_liter) : 0;
-            totalAmount += dailyQuota * price;
+            const amount = dailyQuota * price;
+            totalAmount += amount;
             
             priceSegments[price] = (priceSegments[price] || 0) + 1;
+            dailyBreakdown.push({
+                date,
+                price,
+                liters: Math.round(dailyQuota * 100) / 100,
+                amount: Math.round(amount * 100) / 100
+            });
         }
 
         // 4. Build Reason string
@@ -86,10 +94,14 @@ const calculateSplitFuelAllowance = async (client, totalLiters, startDate, endDa
         
         const finalReason = `Split: ${workingDays.length} working days. [${breakdownStr}]`;
         
-        return { totalAmount: Math.round(totalAmount * 100) / 100, reason: finalReason };
+        return { 
+            totalAmount: Math.round(totalAmount * 100) / 100, 
+            reason: finalReason,
+            dailyBreakdown
+        };
     } catch (e) {
         console.error("[FUEL_CALC_ERROR]", e);
-        return { totalAmount: 0, reason: "Error in split calculation" };
+        return { totalAmount: 0, reason: "Error in split calculation", dailyBreakdown: [] };
     }
 };
 

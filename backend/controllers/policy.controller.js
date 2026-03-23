@@ -111,10 +111,11 @@ const getFuelSplitPreview = async (req, res) => {
                 const calc = await calculateSplitFuelAllowance(db, emp.liters, startDate, endDate);
                 results[emp.id] = {
                     totalAmount: calc.totalAmount,
-                    reason: calc.reason
+                    reason: calc.reason,
+                    dailyBreakdown: calc.dailyBreakdown
                 };
             } else {
-                results[emp.id] = { totalAmount: 0, reason: '' };
+                results[emp.id] = { totalAmount: 0, reason: '', dailyBreakdown: [] };
             }
         }
 
