@@ -427,7 +427,7 @@ const initDailyAttendance = async (req, res) => {
             }
 
             // 3. Get all active employees
-            const empRes = await client.query('SELECT id FROM employees WHERE status = \'Active\'');
+            const empRes = await client.query('SELECT id FROM employees WHERE employment_status = \'Active\'');
             const employees = empRes.rows;
 
             let created = 0;

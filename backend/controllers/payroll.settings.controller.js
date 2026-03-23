@@ -12,7 +12,7 @@ const getComponents = async (req, res) => {
 };
 
 const createComponent = async (req, res) => {
-    const { name, type, is_taxable, epf_eligible, etf_eligible } = req.body;
+    const { name, type, is_taxable, epf_eligible, etf_eligible, welfare_eligible } = req.body;
     try {
         // 1. Check for duplicate name (case-insensitive)
         const checkRes = await db.query(
@@ -25,8 +25,8 @@ const createComponent = async (req, res) => {
         }
 
         const result = await db.query(
-            'INSERT INTO salary_components (name, type, is_taxable, epf_eligible, etf_eligible) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-            [name, type, is_taxable, epf_eligible, etf_eligible]
+            'INSERT INTO salary_components (name, type, is_taxable, epf_eligible, etf_eligible, welfare_eligible) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [name, type, is_taxable, epf_eligible, etf_eligible, welfare_eligible || false]
         );
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -35,7 +35,7 @@ const createComponent = async (req, res) => {
 };
 
 const updateComponent = async (req, res) => {
-    const { name, type, is_taxable, epf_eligible, etf_eligible, status } = req.body;
+    const { name, type, is_taxable, epf_eligible, etf_eligible, welfare_eligible, status } = req.body;
     try {
         const result = await db.query(
             `UPDATE salary_components 
@@ -43,9 +43,10 @@ const updateComponent = async (req, res) => {
                  is_taxable = COALESCE($3, is_taxable), 
                  epf_eligible = COALESCE($4, epf_eligible),
                  etf_eligible = COALESCE($5, etf_eligible),
-                 status = COALESCE($6, status)
-             WHERE id = $7 RETURNING *`,
-            [name, type, is_taxable, epf_eligible, etf_eligible, status, req.params.id]
+                 welfare_eligible = COALESCE($6, welfare_eligible),
+                 status = COALESCE($7, status)
+             WHERE id = $8 RETURNING *`,
+            [name, type, is_taxable, epf_eligible, etf_eligible, welfare_eligible, status, req.params.id]
         );
         res.status(200).json(result.rows[0]);
     } catch (error) {

@@ -319,8 +319,8 @@ const createPayroll = async (req, res) => {
         }
         */ 
 
-        // RULE 5+: Welfare — calculated from accumulated Bases (Rule 5+ Data Driven)
-        const welfareAmount = (welfareBase > 0) ? (welfareBase * 0.02) : 0;
+        // RULE 5+: Welfare — calculated from Basic Salary preferentially (Enterprise Rule: 2%)
+        const welfareAmount = (basicSalary > 0) ? (basicSalary * 0.02) : ((welfareBase > 0) ? (welfareBase * 0.02) : 0);
         if (welfareAmount > 0) {
             breakdown.push({
                 name: compWelfare ? compWelfare.name : 'Welfare',
@@ -1167,8 +1167,8 @@ const getPayrollPreview = async (req, res) => {
         }
         */ 
 
-        // Welfare
-        const welfareAmount = welfareBase * 0.02;
+        // Welfare - preferentially from Basic Salary (Enterprise Rule: 2%)
+        const welfareAmount = (basicSalary > 0) ? (basicSalary * 0.02) : (welfareBase * 0.02);
         if (welfareAmount > 0) {
             breakdown.push({
                 name: compWelfare ? compWelfare.name : 'Welfare',
