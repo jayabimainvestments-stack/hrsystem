@@ -98,12 +98,12 @@ const getFuelSplitPreview = async (req, res) => {
         // Determine start and end date for the month
         const [year, monthNum] = month.split('-').map(Number);
         
-        // Period: 25th of last month to 24th of current month
-        const endDay = 25; // Exclusive end for the loop usually, or 24 inclusive
-        const endDate = `${year}-${monthNum.toString().padStart(2, '0')}-25`;
-        
+        // Period: 25th of last month to 24th of current month (prevents 1-day overlap)
         const lastMonthDate = new Date(year, monthNum - 2, 25);
         const startDate = lastMonthDate.toISOString().split('T')[0];
+        
+        const currentMonthEnd = new Date(year, monthNum - 1, 24);
+        const endDate = currentMonthEnd.toISOString().split('T')[0];
 
         const results = {};
         for (const emp of employees) {
