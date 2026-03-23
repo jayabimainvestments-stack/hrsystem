@@ -46,7 +46,7 @@ const HubDropdown = ({ label, icon: Icon, items, activePaths }) => {
                     <div className="px-4 py-2 mb-2">
                         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{label}</p>
                     </div>
-                    {items.map((item, index) => {
+                    {items.filter(item => item.show !== false).map((item, index) => {
                         const ItemIcon = item.icon;
                         const isItemActive = location.pathname === item.to;
                         return (
@@ -123,30 +123,32 @@ const Navbar = () => {
                 { to: "/attendance", icon: Clock, label: "Attendance", desc: "Real-time records" },
                 { to: "/leaves", icon: Calendar, label: "Leaves", desc: "Leave management" },
                 { to: "/documents", icon: FileText, label: "Documents", desc: "Document management" },
-                { to: "/compliance-manager", icon: ShieldAlert, label: "Compliance", desc: "Policy and audit" }
+                { to: "/compliance-manager", icon: ShieldAlert, label: "Compliance", desc: "Policy and audit", show: user?.role === 'Admin' || user?.role === 'HR Manager' }
             ]
         },
         {
             label: "Finance",
             icon: Landmark,
+            show: user?.role === 'Admin' || user?.role === 'HR Manager',
             paths: ["/payroll"],
             items: [
                 { to: "/payroll", icon: CreditCard, label: "Payroll", desc: "Salary processing" },
                 { to: "/welfare-ledger", icon: Wallet, label: "Welfare Ledger", desc: "Fund collections and spending" },
-                { to: "/finance/manual-deduction", icon: LayoutGrid, label: "Salary Details", desc: "Salary Components, Fuel, Loans" },
-                { to: "/payroll/settings", icon: Settings, label: "Payroll Settings", desc: "Tax and deductions" }
+                { to: "/finance/manual-deduction", icon: LayoutGrid, label: "Salary Details", desc: "Salary Components, Fuel, Loans", show: user?.role === 'Admin' || user?.role === 'HR Manager' },
+                { to: "/payroll/settings", icon: Settings, label: "Payroll Settings", desc: "Tax and deductions", show: user?.role === 'Admin' || user?.role === 'HR Manager' }
             ]
         },
         {
             label: "System",
             icon: Shield,
             show: user?.role === 'Admin' || user?.role === 'HR Manager',
-            paths: ["/org-manager", "/audit-logs", "/security/roles"],
+            paths: ["/org-manager", "/audit-logs", "/security/roles", "/holidays"],
             items: [
                 { to: "/org-manager", icon: Layout, label: "Organization", desc: "Company structure" },
                 { to: "/audit-logs", icon: ShieldCheck, label: "Audit Logs", desc: "System activities" },
                 { to: "/governance", icon: Shield, label: "Approvals", desc: "Approval queue" },
-                { to: "/security/roles", icon: ClipboardCheck, label: "Permissions", desc: "Access control" }
+                { to: "/security/roles", icon: ClipboardCheck, label: "Permissions", desc: "Access control" },
+                { to: "/holidays", icon: Calendar, label: "Holidays", desc: "Company calendar" }
             ]
         }
     ];

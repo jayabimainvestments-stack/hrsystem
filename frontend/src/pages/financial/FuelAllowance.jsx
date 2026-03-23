@@ -10,14 +10,19 @@ const FuelAllowance = () => {
     const [employees, setEmployees] = useState([]);
     const [requests, setRequests] = useState([]);
     const [monthStatus, setMonthStatus] = useState({ transferred: false });
+    const [fuelHistory, setFuelHistory] = useState([]);
+    const [splitResults, setSplitResults] = useState({}); // { empId: { totalAmount, reason } }
     const [error, setError] = useState(null);
+    const [isScraping, setIsScraping] = useState(false);
+    const [calculating, setCalculating] = useState(false);
 
     // New Request State
     const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
-    const [fuelPrice, setFuelPrice] = useState(370); // Default price
+    const [fuelPrice, setFuelPrice] = useState(317); // Current active price
     const [allocations, setAllocations] = useState({}); // { empId: liters }
     const [priceSaving, setPriceSaving] = useState(false);
     const priceTimerRef = useRef(null);
+    const calcTimerRef = useRef(null);
 
     // Auto-save fuel price to DB with debounce
     const saveFuelPrice = useCallback(async (price) => {
@@ -53,7 +58,55 @@ const FuelAllowance = () => {
         fetchRequests();
         fetchPolicy();
         fetchMonthStatus();
+        fetchFuelHistory();
     }, [month]);
+
+    // Recalculate split values when allocations or month changes
+    useEffect(() => {
+        if (Object.keys(allocations).length > 0) {
+            if (calcTimerRef.current) clearTimeout(calcTimerRef.current);
+            calcTimerRef.current = setTimeout(() => fetchSplitPreviews(), 800);
+        }
+    }, [allocations, month]);
+
+    const fetchFuelHistory = async () => {
+        try {
+            const { data } = await api.get('/policy/fuel-history');
+            setFuelHistory(data);
+        } catch (error) {
+            console.error('Error fetching fuel history', error);
+        }
+    };
+
+    const handleTriggerScrape = async () => {
+        setIsScraping(true);
+        try {
+            await api.post('/policy/trigger-scrape');
+            await fetchFuelHistory();
+            await fetchPolicy();
+            alert('Fuel prices updated successfully from CEYPETCO!');
+        } catch (error) {
+            alert('Scraper failed. Please check backend logs.');
+        } finally {
+            setIsScraping(false);
+        }
+    };
+
+    const fetchSplitPreviews = async () => {
+        setCalculating(true);
+        try {
+            const empList = Object.entries(allocations).map(([id, liters]) => ({ id, liters }));
+            const { data } = await api.post('/policy/fuel-split-preview', {
+                month,
+                employees: empList
+            });
+            setSplitResults(data);
+        } catch (error) {
+            console.error("Failed to fetch split previews", error);
+        } finally {
+            setCalculating(false);
+        }
+    };
 
     const fetchMonthStatus = async () => {
         try {
@@ -78,7 +131,7 @@ const FuelAllowance = () => {
             setAllocations(initial);
         } catch (error) {
             console.error("Failed to fetch fuel quotas", error);
-            setError("Failed to load employee fuel data.");
+            setError(error.response?.data?.message || "Failed to load employee fuel data. Please check permissions.");
         } finally {
             setLoading(false);
         }
@@ -111,8 +164,11 @@ const FuelAllowance = () => {
         }));
     };
 
-    const calculateTotal = (liters) => {
-        return (liters * fuelPrice).toFixed(2);
+    const calculateTotal = (empId) => {
+        if (splitResults[empId]) {
+            return splitResults[empId].totalAmount;
+        }
+        return (allocations[empId] * fuelPrice) || 0;
     };
 
     const handleSubmit = async () => {
@@ -126,7 +182,8 @@ const FuelAllowance = () => {
                 employee_id: emp.id,
                 name: emp.name,
                 liters: allocations[emp.id] || 0,
-                amount: parseFloat(calculateTotal(allocations[emp.id] || 0))
+                amount: parseFloat(calculateTotal(emp.id)),
+                reason: splitResults[emp.id]?.reason || `Price: ${fuelPrice}`
             })).filter(item => item.amount > 0)
         };
 
@@ -255,9 +312,12 @@ const FuelAllowance = () => {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Global Price (LKR/L)</label>
+                                    <div className="flex items-center justify-between ml-2">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Price (LKR/L)</label>
+                                        {priceSaving && <span className="text-[9px] font-bold text-blue-500 animate-pulse">Saving...</span>}
+                                    </div>
                                     <div className="relative">
-                                        <DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                        <Droplet className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                         <input
                                             type="number"
                                             className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-12 pr-6 py-4 font-black text-sm outline-none focus:border-blue-500 transition-all text-slate-800"
@@ -265,13 +325,28 @@ const FuelAllowance = () => {
                                             onChange={(e) => handlePriceChange(e.target.value)}
                                         />
                                     </div>
+                                    <p className="text-[9px] text-slate-400 font-bold px-2">Used as fallback if no history exists.</p>
                                 </div>
 
                                 <div className="p-5 bg-blue-50 rounded-2xl border border-blue-100">
-                                    <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest mb-1">Total Impact</p>
-                                    <p className="text-2xl font-black text-blue-900 tracking-tight">
-                                        LKR {employees.reduce((sum, emp) => sum + (parseFloat(calculateTotal(allocations[emp.id] || 0)) || 0), 0).toLocaleString()}
-                                    </p>
+                                    <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest mb-1">Total Impact ({month})</p>
+                                    <div className="flex items-end justify-between">
+                                        <p className="text-2xl font-black text-blue-900 tracking-tight">
+                                            LKR {employees.reduce((sum, emp) => sum + (parseFloat(calculateTotal(emp.id)) || 0), 0).toLocaleString()}
+                                        </p>
+                                        {calculating && <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-1"></div>}
+                                    </div>
+                                </div>
+
+                                {/* Scraper Action */}
+                                <div className="pt-2">
+                                    <button
+                                        onClick={handleTriggerScrape}
+                                        disabled={isScraping}
+                                        className="w-full py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:border-blue-200 hover:text-blue-600 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <Fuel size={14} className={isScraping ? "animate-spin" : ""} /> {isScraping ? 'Syncing...' : 'Sync Fuel Prices Now'}
+                                    </button>
                                 </div>
 
                                 <button
@@ -298,6 +373,35 @@ const FuelAllowance = () => {
                                 </div>
                             </div>
                         )}
+
+                        {/* Price History Mini Table */}
+                        <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white mb-8">
+                            <div className="flex items-center justify-between mb-6">
+                                <div>
+                                    <h4 className="text-lg font-black uppercase tracking-tight flex items-center gap-2">
+                                        <History size={20} className="text-blue-400" /> Price Audit Trail
+                                    </h4>
+                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Found {fuelHistory.length} historical changes</p>
+                                </div>
+                                <div className="px-4 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-full text-[9px] font-black uppercase tracking-widest text-blue-400">
+                                    Daily Split Active
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                {fuelHistory.slice(0, 4).map((fh, idx) => (
+                                    <div key={idx} className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                                        <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">{new Date(fh.effective_from_date).toLocaleDateString('en-GB')}</p>
+                                        <p className="text-lg font-black tracking-tight">Rs. {parseFloat(fh.price_per_liter).toFixed(2)}</p>
+                                        <p className="text-[7px] font-bold text-blue-400 uppercase tracking-tighter mt-1">{fh.source}</p>
+                                    </div>
+                                ))}
+                                {fuelHistory.length > 4 && (
+                                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-center cursor-pointer hover:bg-white/10 transition-all">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">+{fuelHistory.length - 4} More</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
 
                         <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
                             <div className="overflow-x-auto">
@@ -353,12 +457,19 @@ const FuelAllowance = () => {
                                                             />
                                                         </div>
                                                     </td>
-                                                    <td className="px-8 py-6 text-right">
-                                                        <div className="flex items-center justify-end gap-2">
-                                                            <span className="text-lg font-black text-slate-900">
-                                                                {Number(calculateTotal(allocations[emp.id] || 0)).toLocaleString()}
-                                                            </span>
-                                                            <span className="text-[10px] font-bold text-slate-400 uppercase">LKR</span>
+                                                     <td className="px-8 py-6 text-right">
+                                                        <div className="flex flex-col items-end gap-1">
+                                                            <div className="flex items-center justify-end gap-2">
+                                                                <span className="text-lg font-black text-slate-900">
+                                                                    {Number(calculateTotal(emp.id)).toLocaleString()}
+                                                                </span>
+                                                                <span className="text-[10px] font-bold text-slate-400 uppercase">LKR</span>
+                                                            </div>
+                                                            {splitResults[emp.id]?.reason && (
+                                                                <p className="text-[9px] font-bold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 max-w-[200px] truncate" title={splitResults[emp.id].reason}>
+                                                                    {splitResults[emp.id].reason}
+                                                                </p>
+                                                            )}
                                                         </div>
                                                     </td>
                                                 </tr>

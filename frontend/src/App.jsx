@@ -23,6 +23,7 @@ import PerformanceManager from './pages/PerformanceManager';
 import ComplianceManager from './pages/ComplianceManager';
 import OrgManager from './pages/OrgManager';
 import WelfareLedger from './pages/WelfareLedger';
+import HolidaysConfig from './pages/HolidaysConfig';
 import ManualEntry from './pages/financial/ManualEntry';
 import PerformanceSummary from './pages/PerformanceSummary';
 import Governance from './pages/Governance';
@@ -64,6 +65,7 @@ function App() {
                     <Route path="/compliance-manager" element={<PrivateRoute roles={['Admin', 'HR Manager']}><ComplianceManager /></PrivateRoute>} />
                     <Route path="/org-manager" element={<PrivateRoute roles={['Admin', 'HR Manager']}><OrgManager /></PrivateRoute>} />
                     <Route path="/welfare-ledger" element={<PrivateRoute roles={['Admin', 'HR Manager']}><WelfareLedger /></PrivateRoute>} />
+                    <Route path="/holidays" element={<PrivateRoute roles={['Admin', 'HR Manager']}><HolidaysConfig /></PrivateRoute>} />
                     <Route path="/finance/manual-deduction" element={<PrivateRoute roles={['Admin', 'HR Manager']}><ManualEntry /></PrivateRoute>} />
 
                     <Route path="/" element={<Navigate to="/dashboard" />} />

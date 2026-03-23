@@ -3,6 +3,16 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 require('dotenv').config();
+const cron = require('node-cron');
+const { runAutomatedDailyInit } = require('./controllers/biometric.controller');
+let scrapeFuelPrice;
+try {
+    const scraperService = require('./services/fuelScraper.service.js');
+    scrapeFuelPrice = scraperService.scrapeFuelPrice;
+} catch (error) {
+    console.error('[STARTUP] Failed to load fuel scraper service:', error.message);
+    scrapeFuelPrice = null;
+}
 
 const rateLimit = require('express-rate-limit');
 
@@ -91,6 +101,7 @@ app.use('/api/loans', require('./routes/loan.routes'));
 app.use('/api/manual-deductions', require('./routes/manual_deduction.routes'));
 app.use('/api/organization', require('./routes/organization.routes'));
 app.use('/api/welfare', require('./routes/welfare.routes'));
+app.use('/api/holidays', require('./routes/holiday.routes'));
 
 app.get('/', (req, res) => {
     res.send('HR Management System API is running');
@@ -117,6 +128,39 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
+// Schedule automated daily initialization at 1:00 AM Sri Lanka Time
+cron.schedule('0 1 * * *', async () => {
+    console.log('[CRON] Starting automated daily initialization...');
+    try {
+        await runAutomatedDailyInit();
+    } catch (error) {
+        console.error('[CRON] Automated daily init failed:', error);
+    }
+}, {
+    scheduled: true,
+    timezone: "Asia/Colombo"
+});
+
+// Schedule automated fuel price check at 2:00 AM Sri Lanka Time
+cron.schedule('0 2 * * *', async () => {
+    console.log('[CRON] Starting automated fuel price check...');
+    try {
+        if (scrapeFuelPrice) await scrapeFuelPrice();
+    } catch (error) {
+        console.error('[CRON] Fuel scraper failed:', error);
+    }
+}, {
+    scheduled: true,
+    timezone: "Asia/Colombo"
+});
+
 app.listen(PORT, () => {
     console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    
+    // Run scraper once on startup, AFTER server is listening
+    if (scrapeFuelPrice) {
+        scrapeFuelPrice().catch(err => console.error('[STARTUP] Initial fuel scrape failed:', err));
+    } else {
+        console.warn('[STARTUP] Fuel scraper skipped: Service not loaded.');
+    }
 });

@@ -395,38 +395,31 @@ const triggerDeviceSync = async (req, res) => {
     }
 };
 
-/**
- * @desc    Initialize daily attendance (Mark everyone as Absent at start of day)
- * @route   POST /api/biometric/init-daily
- * @access  Device API Key
- */
-const initDailyAttendance = async (req, res) => {
-    const { device_key, date } = req.body; // date is optional, defaults to today
-    
+const runAutomatedDailyInit = async (customDate = null) => {
     try {
         const client = await db.pool.connect();
         try {
             await client.query('BEGIN');
 
-            // 1. Authenticate Device
-            const deviceRes = await client.query('SELECT * FROM attendance_devices WHERE api_key = $1 AND status = $2', [device_key, 'Active']);
-            if (deviceRes.rows.length === 0) {
-                await client.query('ROLLBACK');
-                return res.status(401).json({ message: 'Unauthorized or inactive device' });
-            }
-
-            // 2. Determine target date (YYYY-MM-DD)
-            const targetDate = date || new Date().toISOString().split('T')[0];
+            // Determine target date (YYYY-MM-DD)
+            const targetDate = customDate || new Date().toISOString().split('T')[0];
             const d = new Date(targetDate);
             const dayOfWeek = d.getDay();
 
             // Skip weekends by default (Sunday=0, Saturday=6)
             if (dayOfWeek === 0 || dayOfWeek === 6) {
                 await client.query('ROLLBACK');
-                return res.status(200).json({ message: 'Skipping weekend initialization', date: targetDate });
+                return { message: 'Skipping weekend initialization', date: targetDate };
             }
 
-            // 3. Get all active employees
+            // Skip public/company holidays
+            const holidayCheck = await client.query('SELECT * FROM company_holidays WHERE date = $1', [targetDate]);
+            if (holidayCheck.rows.length > 0) {
+                await client.query('ROLLBACK');
+                return { message: 'Skipping holiday initialization', date: targetDate, holiday: holidayCheck.rows[0].name };
+            }
+
+            // Get all active employees
             const empRes = await client.query('SELECT id FROM employees WHERE employment_status = \'Active\'');
             const employees = empRes.rows;
 
@@ -452,7 +445,7 @@ const initDailyAttendance = async (req, res) => {
 
             await client.query('COMMIT');
             console.log(`[BIOMETRIC] Daily Init for ${targetDate}: ${created} created, ${skipped} skipped.`);
-            res.status(200).json({ message: 'Daily initialization complete', created, skipped, date: targetDate });
+            return { message: 'Daily initialization complete', created, skipped, date: targetDate };
 
         } catch (error) {
             await client.query('ROLLBACK');
@@ -461,10 +454,34 @@ const initDailyAttendance = async (req, res) => {
             client.release();
         }
     } catch (error) {
+        console.error('[BIOMETRIC_AUTO_INIT_ERROR]', error);
+        throw error;
+    }
+};
+
+/**
+ * @desc    Initialize daily attendance (Mark everyone as Absent at start of day)
+ * @route   POST /api/biometric/init-daily
+ * @access  Device API Key
+ */
+const initDailyAttendance = async (req, res) => {
+    const { device_key, date } = req.body; // date is optional, defaults to today
+    
+    try {
+        // Authenticate Device
+        const deviceRes = await db.query('SELECT * FROM attendance_devices WHERE api_key = $1 AND status = $2', [device_key, 'Active']);
+        if (deviceRes.rows.length === 0) {
+            return res.status(401).json({ message: 'Unauthorized or inactive device' });
+        }
+
+        const result = await runAutomatedDailyInit(date);
+        res.status(200).json(result);
+
+    } catch (error) {
         console.error('[BIOMETRIC_INIT_ERROR]', error);
         res.status(500).json({ message: error.message });
     }
 };
 
-module.exports = { processPunch, bulkProcessPunches, registerDevice, getDevices, deleteDevice, triggerDeviceSync, initDailyAttendance };
+module.exports = { processPunch, bulkProcessPunches, registerDevice, getDevices, deleteDevice, triggerDeviceSync, initDailyAttendance, runAutomatedDailyInit };
 

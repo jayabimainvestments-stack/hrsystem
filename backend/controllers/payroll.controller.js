@@ -35,6 +35,64 @@ const calculateTax = (taxableIncome, brackets) => {
     return tax;
 };
 
+// Helper: Calculate Split Fuel Allowance based on working days and price history
+const calculateSplitFuelAllowance = async (client, totalLiters, startDate, endDate) => {
+    try {
+        // 1. Get all working days in range (Excluding Sat, Sun)
+        let workingDays = [];
+        let curr = new Date(startDate);
+        const end = new Date(endDate);
+        
+        while (curr <= end) {
+            const day = curr.getDay();
+            if (day !== 0 && day !== 6) { // Not Sat or Sun
+                workingDays.push(new Date(curr).toISOString().split('T')[0]);
+            }
+            curr.setDate(curr.getDate() + 1);
+        }
+
+        // 2. Filter out Company Holidays
+        const holidayRes = await client.query(
+            "SELECT date::text FROM company_holidays WHERE date::date BETWEEN $1 AND $2",
+            [startDate, endDate]
+        );
+        const holidays = new Set(holidayRes.rows.map(h => h.date.split(' ')[0]));
+        workingDays = workingDays.filter(d => !holidays.has(d));
+
+        if (workingDays.length === 0) return { totalAmount: 0, reason: "No working days in period" };
+
+        const dailyQuota = totalLiters / workingDays.length;
+        let totalAmount = 0;
+        let priceSegments = {}; // { price: days }
+
+        // 3. Calculate daily amount based on price history
+        for (const date of workingDays) {
+            const priceRes = await client.query(`
+                SELECT price_per_liter FROM fuel_price_history 
+                WHERE effective_from_date <= $1 
+                ORDER BY effective_from_date DESC LIMIT 1
+            `, [date]);
+            
+            const price = priceRes.rows.length > 0 ? parseFloat(priceRes.rows[0].price_per_liter) : 0;
+            totalAmount += dailyQuota * price;
+            
+            priceSegments[price] = (priceSegments[price] || 0) + 1;
+        }
+
+        // 4. Build Reason string
+        const breakdownStr = Object.entries(priceSegments)
+            .map(([price, days]) => `${(days * dailyQuota).toFixed(2)}L @ Rs.${price}`)
+            .join(' + ');
+        
+        const finalReason = `Split: ${workingDays.length} working days. [${breakdownStr}]`;
+        
+        return { totalAmount: Math.round(totalAmount * 100) / 100, reason: finalReason };
+    } catch (e) {
+        console.error("[FUEL_CALC_ERROR]", e);
+        return { totalAmount: 0, reason: "Error in split calculation" };
+    }
+};
+
 const createPayroll = async (req, res) => {
     const { user_id, month, year, reauth_token, fuel_rate_override } = req.body;
     const processingYear = year || new Date().getFullYear();
@@ -175,9 +233,18 @@ const createPayroll = async (req, res) => {
                 continue;
             }
 
-            // Fuel display: append liters
+            // Fuel display: append liters & calculate dynamic split if applicable
             if (compName.includes('fuel') && quantity > 0) {
+                // Determine cycle dates for March 2026 (or relevant month)
+                // User requirement: Feb 25 - Mar 25
+                const fuelStartDate = (month === 'March' && processingYear == 2026) ? '2026-02-25' : `${datePrefix}-01`;
+                const fuelEndDate = (month === 'March' && processingYear == 2026) ? '2026-03-25' : new Date(processingYear, monthNum, 0).toISOString().split('T')[0];
+
+                const splitResult = await calculateSplitFuelAllowance(client, quantity, fuelStartDate, fuelEndDate);
+                amount = splitResult.totalAmount;
                 comp.name = `${comp.name} (${quantity}L)`;
+                comp.reason = splitResult.reason; // Inject into the component
+                console.log(`[FUEL_ENGINE] Applied split for ${employee.name}: ${amount} (Liters: ${quantity})`);
             }
 
             if (compName.includes('basic')) basicSalary = amount;
@@ -191,7 +258,7 @@ const createPayroll = async (req, res) => {
                 if (comp.etf_eligible) etfBase += amount;
                 if (comp.welfare_eligible) welfareBase += amount;
 
-                const idx = breakdown.push({ name: comp.name, amount, type: 'Earning' }) - 1;
+                const idx = breakdown.push({ name: comp.name, amount, type: 'Earning', details: comp.reason || comp.details }) - 1;
                 if (compName.includes('attendance')) attendanceAllowanceIdx = idx;
             } else if (comp.type === 'Deduction') {
                 // Skip loan-type deductions from structure — RULE 4: handled by employee_loans tracker below
@@ -200,7 +267,7 @@ const createPayroll = async (req, res) => {
                     continue;
                 }
                 totalDeductionsInStructure += amount;
-                breakdown.push({ name: comp.name, amount, type: 'Deduction' });
+                breakdown.push({ name: comp.name, amount, type: 'Deduction', details: comp.reason || comp.details });
             }
 
             appliedComponentIds.add(comp.component_id);
@@ -368,8 +435,8 @@ const createPayroll = async (req, res) => {
 
         for (const item of breakdown) {
             await client.query(
-                `INSERT INTO payroll_details (payroll_id, component_name, amount, type) VALUES ($1, $2, $3, $4)`,
-                [payrollId, item.name, item.amount, item.type]
+                `INSERT INTO payroll_details (payroll_id, component_name, amount, type, details) VALUES ($1, $2, $3, $4, $5)`,
+                [payrollId, item.name, item.amount, item.type, item.details]
             );
         }
 
@@ -1084,7 +1151,14 @@ const getPayrollPreview = async (req, res) => {
 
             // Fuel & Performance Display Logic
             if (compName.includes('fuel') && quantity > 0) {
+                // For preview/display logic
+                const fuelStartDate = (month === 'March' && processingYear == 2026) ? '2026-02-25' : `${datePrefix}-01`;
+                const fuelEndDate = (month === 'March' && processingYear == 2026) ? '2026-03-25' : new Date(processingYear, monthNum, 0).toISOString().split('T')[0];
+
+                const splitResult = await calculateSplitFuelAllowance(db, quantity, fuelStartDate, fuelEndDate);
+                amount = splitResult.totalAmount;
                 comp.name = `${comp.name} (${quantity}L)`;
+                comp.reason = splitResult.reason;
             }
 
             if (compName.includes('basic')) basicSalary = amount;
@@ -1426,5 +1500,6 @@ module.exports = {
     getPayrollPreview,
     deleteAllPayrolls,
     getMonthlyOverrides,
-    getPayrollReadiness
+    getPayrollReadiness,
+    calculateSplitFuelAllowance
 };

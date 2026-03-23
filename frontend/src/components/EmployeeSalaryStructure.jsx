@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 import { CreditCard, Save, Plus, Trash2, Edit2, X, Download, ShieldCheck, Zap, Activity } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const EmployeeSalaryStructure = ({ employeeId }) => {
+    const { user } = useAuth();
+    const isAdmin = user?.role === 'Admin' || user?.role === 'HR Manager';
     const [structure, setStructure] = useState([]);
     const [allComponents, setAllComponents] = useState([]);
     const [sourceMeta, setSourceMeta] = useState({}); // { component_id: 'historical' | 'override' }
@@ -126,14 +129,16 @@ const EmployeeSalaryStructure = ({ employeeId }) => {
                                 <h4 className="text-sm font-black uppercase tracking-[0.2em] text-slate-800">Components</h4>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Salary breakdown</p>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => setAdding(true)}
-                                className="group p-4 bg-primary-600 text-white rounded-2xl hover:bg-slate-950 transition-all shadow-xl shadow-primary-100 flex items-center gap-3"
-                            >
-                                <Plus size={20} className="group-hover:rotate-90 transition-transform" strokeWidth={3} />
-                                <span className="text-[10px] font-black uppercase tracking-widest pr-1">Add Component</span>
-                            </button>
+                            {isAdmin && (
+                                <button
+                                    type="button"
+                                    onClick={() => setAdding(true)}
+                                    className="group p-4 bg-primary-600 text-white rounded-2xl hover:bg-slate-950 transition-all shadow-xl shadow-primary-100 flex items-center gap-3"
+                                >
+                                    <Plus size={20} className="group-hover:rotate-90 transition-transform" strokeWidth={3} />
+                                    <span className="text-[10px] font-black uppercase tracking-widest pr-1">Add Component</span>
+                                </button>
+                            )}
                         </div>
 
                         <div className="divide-y divide-slate-50/60 p-6">
@@ -161,7 +166,8 @@ const EmployeeSalaryStructure = ({ employeeId }) => {
                                             <span className="absolute left-4 top-1 text-[8px] font-black text-primary-400 uppercase tracking-widest leading-none">Qty/Liters</span>
                                             <input
                                                 type="number"
-                                                className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 pt-5 pb-3 w-24 text-center font-black text-sm outline-none transition-all text-slate-800 focus:border-primary-500"
+                                                disabled={!isAdmin}
+                                                className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 pt-5 pb-3 w-24 text-center font-black text-sm outline-none transition-all text-slate-800 focus:border-primary-500 disabled:opacity-75 disabled:cursor-not-allowed"
                                                 value={item.quantity || 0}
                                                 onChange={(e) => {
                                                     const newStruct = [...structure];
@@ -175,7 +181,8 @@ const EmployeeSalaryStructure = ({ employeeId }) => {
                                                 <span className="absolute left-8 top-1 text-[8px] font-black text-rose-400 uppercase tracking-widest leading-none">Installments</span>
                                                 <input
                                                     type="number"
-                                                    className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 pt-5 pb-3 w-24 text-center font-black text-sm outline-none transition-all text-slate-800 focus:border-rose-500"
+                                                    disabled={!isAdmin}
+                                                    className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 pt-5 pb-3 w-24 text-center font-black text-sm outline-none transition-all text-slate-800 focus:border-rose-500 disabled:opacity-75 disabled:cursor-not-allowed"
                                                     value={item.installments_remaining || ''}
                                                     onChange={(e) => {
                                                         const newStruct = [...structure];
@@ -190,7 +197,8 @@ const EmployeeSalaryStructure = ({ employeeId }) => {
                                             <span className="absolute left-8 top-1 text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">Amount (LKR)</span>
                                             <input
                                                 type="number"
-                                                className="bg-slate-50/50 border-2 border-transparent focus:border-primary-100 focus:bg-white rounded-2xl pl-16 pr-6 pt-5 pb-3 w-44 font-black text-base tabular-nums transition-all outline-none text-slate-800 shadow-inner group-hover:bg-slate-100 group-focus-within:bg-white"
+                                                disabled={!isAdmin}
+                                                className="bg-slate-50/50 border-2 border-transparent focus:border-primary-100 focus:bg-white rounded-2xl pl-16 pr-6 pt-5 pb-3 w-44 font-black text-base tabular-nums transition-all outline-none text-slate-800 shadow-inner group-hover:bg-slate-100 group-focus-within:bg-white disabled:opacity-75 disabled:cursor-not-allowed"
                                                 value={item.amount || 0}
                                                 onChange={(e) => {
                                                     const newStruct = [...structure];
@@ -201,13 +209,15 @@ const EmployeeSalaryStructure = ({ employeeId }) => {
                                             />
                                             <span className="absolute left-10 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400 mt-1">LKR</span>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRemove(item.component_id)}
-                                            className="p-4 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all"
-                                        >
-                                            <Trash2 size={20} />
-                                        </button>
+                                        {isAdmin && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemove(item.component_id)}
+                                                className="p-4 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all"
+                                            >
+                                                <Trash2 size={20} />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             ))}
@@ -221,31 +231,35 @@ const EmployeeSalaryStructure = ({ employeeId }) => {
                             )}
                         </div>
 
-                        <div className="p-10 bg-slate-50/30 flex justify-end items-center gap-6">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">Verify changes before saving</p>
-                            <button type="submit" className="group relative overflow-hidden px-12 py-5 bg-slate-950 text-white rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-2xl transition-all hover:scale-[1.02] active:scale-[0.98]">
-                                <div className="relative z-10 flex items-center gap-3">
-                                    <Zap size={18} className="text-primary-400 fill-primary-400" /> Save Structure
-                                </div>
-                                <div className="absolute inset-0 bg-gradient-to-r from-primary-600/0 via-primary-600/20 to-primary-600/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
-                            </button>
-                        </div>
+                        {isAdmin && (
+                            <div className="p-10 bg-slate-50/30 flex justify-end items-center gap-6">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">Verify changes before saving</p>
+                                <button type="submit" className="group relative overflow-hidden px-12 py-5 bg-slate-950 text-white rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-2xl transition-all hover:scale-[1.02] active:scale-[0.98]">
+                                    <div className="relative z-10 flex items-center gap-3">
+                                        <Zap size={18} className="text-primary-400 fill-primary-400" /> Save Structure
+                                    </div>
+                                    <div className="absolute inset-0 bg-gradient-to-r from-primary-600/0 via-primary-600/20 to-primary-600/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+                                </button>
+                            </div>
+                        )}
                     </form>
                 </div>
 
                 {/* Sidebar Alerts / Settings */}
                 <div className="space-y-8">
-                    <div className="relative group bg-slate-950 rounded-[3.5rem] p-10 text-white shadow-2xl overflow-hidden border border-white/5">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/20 rounded-full blur-3xl -mr-16 -mt-16"></div>
-                        <ShieldCheck className="text-emerald-400 mb-6 group-hover:scale-110 transition-transform" size={40} strokeWidth={1.5} />
-                        <h4 className="font-black text-xl mb-4 uppercase tracking-tight">Compliance Shield</h4>
-                        <p className="text-slate-400 text-xs font-medium leading-relaxed mb-8">
-                            This structure is automatically validated against standard payroll policies.
-                        </p>
-                        <button className="w-full py-5 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-white/10 transition-all flex items-center justify-center gap-3 group/btn">
-                            <Download size={16} className="group-hover/btn:-translate-y-1 transition-transform" /> Sync to Payroll
-                        </button>
-                    </div>
+                    {isAdmin && (
+                        <div className="relative group bg-slate-950 rounded-[3.5rem] p-10 text-white shadow-2xl overflow-hidden border border-white/5">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/20 rounded-full blur-3xl -mr-16 -mt-16"></div>
+                            <ShieldCheck className="text-emerald-400 mb-6 group-hover:scale-110 transition-transform" size={40} strokeWidth={1.5} />
+                            <h4 className="font-black text-xl mb-4 uppercase tracking-tight">Compliance Shield</h4>
+                            <p className="text-slate-400 text-xs font-medium leading-relaxed mb-8">
+                                This structure is automatically validated against standard payroll policies.
+                            </p>
+                            <button disabled className="w-full py-5 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 opacity-50 cursor-not-allowed">
+                                <Download size={16} /> Auto-Synced internally
+                            </button>
+                        </div>
+                    )}
 
                     <div className="p-10 bg-primary-50/50 border-2 border-primary-100/50 rounded-[3.5rem] relative overflow-hidden">
                         <div className="relative z-10">

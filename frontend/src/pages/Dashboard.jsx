@@ -163,12 +163,13 @@ const Dashboard = () => {
         fetchStats();
     }, [user.role]);
 
+    const isAdmin = user.role === 'Admin' || user.role === 'HR Manager';
     const statCards = [
-        { label: 'Active Staff', value: stats.employeeCount, icon: Users, color: 'green', link: '/employees' },
+        { label: 'Active Staff', value: stats.employeeCount, icon: Users, color: 'green', link: '/employees', show: isAdmin },
         { label: 'Current Hub Time', value: currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }), icon: Clock, color: 'blue', link: '/attendance' },
         { label: 'Performance Journal', value: `${stats.myPerformance} Pts`, icon: Award, color: 'amber', link: '/my-performance' },
         { label: 'Pending Leaves', value: stats.pendingLeaves, icon: Calendar, color: 'green', link: '/leaves' },
-        { label: 'Financial Requests', value: stats.pendingFinancial || 0, icon: DollarSign, color: 'rose', link: '/attendance/manual-deductions' },
+        { label: 'Financial Requests', value: stats.pendingFinancial || 0, icon: DollarSign, color: 'rose', link: '/attendance/manual-deductions', show: isAdmin },
         { label: 'Last Payroll', value: stats.latestPayroll, icon: CreditCard, color: 'blue', link: '/payroll' }
     ];
 
@@ -257,7 +258,7 @@ const Dashboard = () => {
                         </div>
                     )}
 
-                    {statCards.map((card, i) => {
+                    {statCards.filter(card => card.show !== false).map((card, i) => {
                         const Icon = card.icon;
                         const colors = {
                             blue: 'from-blue-500 to-blue-600 shadow-blue-100',
