@@ -86,7 +86,8 @@ const FuelAllowance = () => {
             await fetchPolicy();
             alert('Fuel prices updated successfully from CEYPETCO!');
         } catch (error) {
-            alert('Scraper failed. Please check backend logs.');
+            const errorMsg = error.response?.data?.message || error.message;
+            alert(`Scraper failed: ${errorMsg}`);
         } finally {
             setIsScraping(false);
         }
