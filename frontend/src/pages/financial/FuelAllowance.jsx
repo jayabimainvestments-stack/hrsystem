@@ -16,6 +16,7 @@ const FuelAllowance = () => {
     const [isScraping, setIsScraping] = useState(false);
     const [calculating, setCalculating] = useState(false);
     const [selectedBreakdown, setSelectedBreakdown] = useState(null); // { name, data: [] }
+    const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
     // New Request State
     const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
@@ -313,21 +314,12 @@ const FuelAllowance = () => {
                                     </div>
                                 </div>
 
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between ml-2">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Price (LKR/L)</label>
-                                        {priceSaving && <span className="text-[9px] font-bold text-blue-500 animate-pulse">Saving...</span>}
+                                <div className="p-5 bg-blue-50 rounded-2xl border border-blue-100">
+                                    <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest mb-1 italic">Calculation Mode</p>
+                                    <div className="flex items-center gap-2 text-blue-900 font-bold text-xs uppercase tracking-tight">
+                                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                                        Daily Split (LKR History)
                                     </div>
-                                    <div className="relative">
-                                        <Droplet className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                        <input
-                                            type="number"
-                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-12 pr-6 py-4 font-black text-sm outline-none focus:border-blue-500 transition-all text-slate-800"
-                                            value={fuelPrice}
-                                            onChange={(e) => handlePriceChange(e.target.value)}
-                                        />
-                                    </div>
-                                    <p className="text-[9px] text-slate-400 font-bold px-2">Used as fallback if no history exists.</p>
                                 </div>
 
                                 <div className="p-5 bg-blue-50 rounded-2xl border border-blue-100">
@@ -398,8 +390,11 @@ const FuelAllowance = () => {
                                     </div>
                                 ))}
                                 {fuelHistory.length > 4 && (
-                                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-center cursor-pointer hover:bg-white/10 transition-all">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">+{fuelHistory.length - 4} More</p>
+                                    <div 
+                                        onClick={() => setIsHistoryModalOpen(true)}
+                                        className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-center cursor-pointer hover:bg-white/10 transition-all group"
+                                    >
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-400 transition-colors">+{fuelHistory.length - 4} More Records</p>
                                     </div>
                                 )}
                             </div>
@@ -657,6 +652,60 @@ const FuelAllowance = () => {
                                 className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-slate-200 hover:scale-105 active:scale-95 transition-all"
                             >
                                 Close Details
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Price History Modal */}
+            {isHistoryModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
+                    <div className="bg-white rounded-[2.5rem] w-full max-w-xl max-h-[70vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-300 overflow-hidden">
+                        <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
+                                    <div className="p-2 bg-slate-900 rounded-xl text-white">
+                                        <History size={20} />
+                                    </div>
+                                    Price Audit Trail
+                                </h3>
+                                <p className="text-slate-500 font-bold text-xs mt-1 uppercase tracking-wider">Historical Price Logs</p>
+                            </div>
+                            <button 
+                                onClick={() => setIsHistoryModalOpen(false)}
+                                className="p-3 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-2xl transition-all"
+                            >
+                                <XCircle size={24} />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-8 space-y-3">
+                            {fuelHistory.map((fh, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-5 bg-slate-50 rounded-2xl border border-slate-100 hover:border-blue-200 hover:bg-white transition-all group">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-slate-400 group-hover:text-blue-500 group-hover:border-blue-100 transition-all">
+                                            <Calendar size={18} />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Effective From</p>
+                                            <p className="font-bold text-slate-900">{new Date(fh.effective_from_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Price (LKR/L)</p>
+                                        <p className="text-xl font-black text-blue-600">Rs. {parseFloat(fh.price_per_liter).toFixed(2)}</p>
+                                        <p className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">{fh.source}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex justify-end">
+                            <button 
+                                onClick={() => setIsHistoryModalOpen(false)}
+                                className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-slate-200 hover:scale-105 active:scale-95 transition-all"
+                            >
+                                Close Audit Trail
                             </button>
                         </div>
                     </div>
