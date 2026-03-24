@@ -60,8 +60,8 @@ const getManualDeductions = async (req, res) => {
                 FROM employees e
                 LEFT JOIN (
                     SELECT employee_id, 
-                           COUNT(*) FILTER (WHERE status = 'Absent') as absent_days,
-                           ROUND(SUM(COALESCE(late_minutes, 0)) / 60.0, 2) as late_hours
+                           (COUNT(*) FILTER (WHERE status = 'Absent')) + (COUNT(*) FILTER (WHERE status = 'Incomplete' AND date < CURRENT_DATE) * 0.5) as absent_days,
+                           ROUND(SUM(COALESCE(late_minutes, 0)) / 60.0 + SUM(CASE WHEN date < CURRENT_DATE THEN COALESCE(short_leave_hours, 0) ELSE 0 END), 2) as late_hours
                     FROM attendance 
                     WHERE to_char(date, 'YYYY-MM') = $1
                     GROUP BY employee_id
@@ -136,26 +136,33 @@ const saveManualDeduction = async (req, res) => {
                 return res.status(400).json({ message: 'Cannot edit processed deduction' });
             }
 
+            const newStatus = totalAmount === 0 ? 'Processed' : 'Pending';
+
             // Update
             const updateRes = await db.query(`
                 UPDATE attendance_deductions 
                 SET deduct_days = $1, deduct_day_rate = $2, 
                     deduct_hours = $3, deduct_hour_rate = $4, 
                     total_amount = $5, reason = $6, updated_at = NOW(),
-                    status = 'Pending', approved_by_1 = NULL, approved_by_2 = NULL, approved_at_1 = NULL, approved_at_2 = NULL
+                    status = $8, approved_by_1 = CASE WHEN $8 = 'Processed' THEN $9 ELSE NULL END, 
+                    approved_by_2 = NULL, 
+                    approved_at_1 = CASE WHEN $8 = 'Processed' THEN NOW() ELSE NULL END, 
+                    approved_at_2 = NULL
                 WHERE id = $7
                 RETURNING *
-            `, [deduct_days, dayRate, deduct_hours, hourRate, totalAmount, reason, existing.id]);
+            `, [deduct_days, dayRate, deduct_hours, hourRate, totalAmount, reason, existing.id, newStatus, req.user.id]);
 
             res.status(200).json(updateRes.rows[0]);
         } else {
+            const newStatus = totalAmount === 0 ? 'Processed' : 'Pending';
+
             // Insert
             const insertRes = await db.query(`
                 INSERT INTO attendance_deductions 
-                (employee_id, month, deduct_days, deduct_day_rate, deduct_hours, deduct_hour_rate, total_amount, reason, status, created_by)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending', $9)
+                (employee_id, month, deduct_days, deduct_day_rate, deduct_hours, deduct_hour_rate, total_amount, reason, status, created_by, approved_by_1, approved_at_1)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CASE WHEN $9 = 'Processed' THEN $10 ELSE NULL END, CASE WHEN $9 = 'Processed' THEN NOW() ELSE NULL END)
                 RETURNING *
-            `, [employee_id, month, deduct_days, dayRate, deduct_hours, hourRate, totalAmount, reason, req.user.id]);
+            `, [employee_id, month, deduct_days, dayRate, deduct_hours, hourRate, totalAmount, reason, newStatus, req.user.id]);
 
             res.status(201).json(insertRes.rows[0]);
         }
@@ -268,7 +275,7 @@ const ignoreDeduction = async (req, res) => {
     try {
         // Check if entry exists
         const checkRes = await db.query(
-            'SELECT id, status FROM attendance_deductions WHERE employee_id = $1 AND month = $2',
+            'SELECT id, status, total_amount FROM attendance_deductions WHERE employee_id = $1 AND month = $2',
             [employee_id, month]
         );
 
@@ -278,11 +285,25 @@ const ignoreDeduction = async (req, res) => {
                 return res.status(400).json({ message: 'Cannot ignore processed deduction' });
             }
 
-            // Update to Ignored
-            await db.query(
-                "UPDATE attendance_deductions SET status = 'Ignored', updated_at = NOW() WHERE id = $1",
-                [existing.id]
-            );
+            if (existing.status === 'Ignored') {
+                // Restore logic
+                if (parseFloat(existing.total_amount) === 0) {
+                    // It was a placeholder just to ignore the auto-calculation. Delete it to revert to auto-calculate.
+                    await db.query("DELETE FROM attendance_deductions WHERE id = $1", [existing.id]);
+                    return res.status(200).json({ message: 'Deduction restored to auto-calculation' });
+                } else {
+                    // It was a previously saved deduction, restore it to Pending
+                    await db.query("UPDATE attendance_deductions SET status = 'Pending', updated_at = NOW() WHERE id = $1", [existing.id]);
+                    return res.status(200).json({ message: 'Deduction restored to pending' });
+                }
+            } else {
+                // Ignore logic
+                await db.query(
+                    "UPDATE attendance_deductions SET status = 'Ignored', updated_at = NOW() WHERE id = $1",
+                    [existing.id]
+                );
+                return res.status(200).json({ message: 'Deduction ignored' });
+            }
         } else {
             // Create Ignored record with 0 amounts
             await db.query(`
@@ -290,9 +311,8 @@ const ignoreDeduction = async (req, res) => {
                 (employee_id, month, deduct_days, deduct_day_rate, deduct_hours, deduct_hour_rate, total_amount, reason, status, created_by)
                 VALUES ($1, $2, 0, 0, 0, 0, 0, 'Ignored by User', 'Ignored', $3)
             `, [employee_id, month, req.user.id]);
+            return res.status(200).json({ message: 'Deduction ignored' });
         }
-
-        res.status(200).json({ message: 'Deduction ignored' });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: error.message });
