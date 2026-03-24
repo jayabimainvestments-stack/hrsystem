@@ -63,7 +63,7 @@ const getManualDeductions = async (req, res) => {
                            (COUNT(*) FILTER (WHERE status = 'Absent')) + (COUNT(*) FILTER (WHERE status = 'Incomplete' AND date < CURRENT_DATE) * 0.5) as absent_days,
                            ROUND(SUM(COALESCE(late_minutes, 0)) / 60.0 + SUM(CASE WHEN date < CURRENT_DATE THEN COALESCE(short_leave_hours, 0) ELSE 0 END), 2) as late_hours
                     FROM attendance 
-                    WHERE to_char(date, 'YYYY-MM') = $1
+                    WHERE date >= ($1 || '-01')::date AND date < ($1 || '-01')::date + interval '1 month'
                     GROUP BY employee_id
                 ) att ON e.id = att.employee_id
                 LEFT JOIN (
@@ -71,7 +71,7 @@ const getManualDeductions = async (req, res) => {
                            SUM(unpaid_days) as unpaid_days,
                            SUM(short_leave_hours) as short_leave_hours
                     FROM leaves
-                    WHERE status = 'Approved' AND to_char(start_date, 'YYYY-MM') = $1
+                    WHERE status = 'Approved' AND start_date >= ($1 || '-01')::date AND start_date < ($1 || '-01')::date + interval '1 month'
                     GROUP BY user_id
                 ) l ON e.user_id = l.user_id
             ) calc ON e.id = calc.employee_id
