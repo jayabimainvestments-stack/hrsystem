@@ -76,7 +76,7 @@ const processApprovedRequest = async (client, request) => {
                     quantity = EXCLUDED.quantity, 
                     reason = EXCLUDED.reason,
                     status = 'Approved'
-            `, [entry.employee_id, month, componentId, amount, quantity, `Approved ${request.type}`]);
+            `, [entry.employee_id, month, componentId, amount, quantity, entry.reason || `Approved ${request.type}`]);
             console.log(`[FINANCIAL_SERVICE] Override inserted for Emp ${entry.employee_id}: ${amount} (Status: Approved)`);
         }
     }

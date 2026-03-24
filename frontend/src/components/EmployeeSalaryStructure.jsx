@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { CreditCard, Save, Plus, Trash2, Edit2, X, Download, ShieldCheck, Zap, Activity } from 'lucide-react';
+import { CreditCard, Save, Plus, Trash2, Edit2, X, Download, ShieldCheck, Zap, Activity, Search, Info } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const EmployeeSalaryStructure = ({ employeeId }) => {
@@ -12,6 +12,8 @@ const EmployeeSalaryStructure = ({ employeeId }) => {
     const [loading, setLoading] = useState(true);
     const [adding, setAdding] = useState(false);
     const [newComp, setNewComp] = useState({ component_id: '', amount: 0 });
+    const [breakdownData, setBreakdownData] = useState(null);
+    const [loadingBreakdown, setLoadingBreakdown] = useState(false);
 
     useEffect(() => {
         fetchData();
@@ -75,6 +77,23 @@ const EmployeeSalaryStructure = ({ employeeId }) => {
         setStructure([...structure, { ...original, component_id: original.id, amount: original.default_value }]);
         setAdding(false);
         setNewComp({ component_id: '', amount: 0 });
+    };
+
+    const fetchFuelBreakdown = async (liters) => {
+        setLoadingBreakdown(true);
+        try {
+            const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+            const response = await api.post('/policy/fuel-split-preview', {
+                month: currentMonth,
+                employees: [{ id: employeeId, liters }]
+            });
+            setBreakdownData(response.data[employeeId]);
+        } catch (error) {
+            console.error("Error fetching fuel breakdown", error);
+            alert("Failed to load breakdown");
+        } finally {
+            setLoadingBreakdown(false);
+        }
     };
 
     if (loading) return <div className="p-10 text-center text-slate-400 italic">Loading salary details...</div>;
@@ -158,6 +177,16 @@ const EmployeeSalaryStructure = ({ employeeId }) => {
                                             <div className="flex items-center gap-2">
                                                 <Activity size={10} className={item.type === 'Earning' ? 'text-emerald-500' : 'text-rose-500'} />
                                                 <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">{item.type}</p>
+                                                {item.name.toLowerCase().includes('fuel') && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => fetchFuelBreakdown(item.quantity || 0)}
+                                                        className="ml-2 p-1.5 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-600 hover:text-white transition-all group/btn"
+                                                        title="View Daily Split Breakdown"
+                                                    >
+                                                        <Search size={12} className="group-hover/btn:scale-110 transition-transform" />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -316,6 +345,73 @@ const EmployeeSalaryStructure = ({ employeeId }) => {
                                     <Plus size={18} strokeWidth={3} /> Add to Structure
                                 </div>
                                 <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Fuel Breakdown Modal */}
+            {breakdownData && (
+                <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl flex items-center justify-center z-[150] p-6 animate-in zoom-in-95 duration-300 font-sans">
+                    <div className="bg-white w-full max-w-2xl rounded-[3.5rem] overflow-hidden shadow-2xl border border-white/5 flex flex-col max-h-[85vh]">
+                        <div className="p-10 bg-[#0f172a] text-white relative overflow-hidden flex-shrink-0">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-primary-600/20 blur-[80px] -mr-24 -mt-24"></div>
+                            <div className="relative z-10 flex justify-between items-center">
+                                <div>
+                                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-500/20 text-primary-300 text-[10px] font-black uppercase tracking-widest mb-3">
+                                        Live Calculation
+                                    </div>
+                                    <h2 className="text-3xl font-black uppercase tracking-tight">Fuel <span className="text-primary-500">Breakdown</span></h2>
+                                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1 italic">Current Cycle Preview (25th to 24th)</p>
+                                </div>
+                                <button onClick={() => setBreakdownData(null)} className="p-4 bg-white/5 hover:bg-white/10 rounded-2xl transition-all border border-white/10 group">
+                                    <X size={20} className="group-hover:rotate-90 transition-transform duration-500" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 p-10 overflow-y-auto">
+                            <div className="bg-primary-50 rounded-3xl p-6 border border-primary-100 mb-8">
+                                <p className="text-[10px] font-black text-primary-400 uppercase tracking-widest mb-2 italic">Summary Legend</p>
+                                <p className="text-sm font-bold text-primary-900 leading-relaxed italic">
+                                    {breakdownData.reason}
+                                </p>
+                            </div>
+
+                            <div className="space-y-3">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 pl-2">Daily Audit Log</p>
+                                {breakdownData.dailyBreakdown.map((row, i) => (
+                                    <div key={i} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white hover:border-primary-100 transition-all group">
+                                        <div className="flex items-center gap-4">
+                                            <div className="p-2 bg-white rounded-xl border border-slate-100 font-bold text-[10px] text-slate-400 uppercase tracking-tighter">
+                                                {new Date(row.date).toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-slate-900 text-sm tracking-tight">{row.liters.toFixed(2)}L @ Rs. {row.price}</p>
+                                                <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest italic leading-none mt-1">Working Day Rate</p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="font-black text-slate-900 tabular-nums">Rs. {row.amount.toFixed(2)}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="p-10 bg-slate-50 border-t border-slate-100 flex-shrink-0 flex justify-between items-center">
+                            <div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5 italic">Estimated Total</p>
+                                <p className="text-3xl font-black text-slate-900 tracking-tighter tabular-nums">
+                                    <span className="text-sm text-primary-500 mr-2 font-black italic">LKR</span>
+                                    {breakdownData.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setBreakdownData(null)}
+                                className="px-10 py-5 bg-slate-950 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-200"
+                            >
+                                Done Viewing
                             </button>
                         </div>
                     </div>

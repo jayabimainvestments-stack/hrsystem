@@ -216,18 +216,30 @@ const generatePayslipPDF = async (req, res) => {
 
         earnings.forEach(item => {
             if (!item.component_name.toLowerCase().includes('basic')) {
-                doc.text(item.component_name, 60, earnY);
+                doc.fillColor('black').font('Helvetica').text(item.component_name, 60, earnY);
                 doc.text(parseFloat(item.amount).toFixed(2), 210, earnY, { align: 'right', width: 75 });
-                earnY += 15;
+                earnY += 12;
+                if (item.details && item.details !== 'Auto-snapshot from Master Baseline') {
+                    doc.fillColor('#6b7280').fontSize(7).font('Helvetica-Oblique').text(item.details, 70, earnY, { width: 150 });
+                    earnY += doc.heightOfString(item.details, { width: 150 }) + 5;
+                } else {
+                    earnY += 5;
+                }
             }
         });
 
         // Populate Deductions
         const deductions = breakdown.filter(i => i.type === 'Deduction' || i.type === 'Statutory');
         deductions.forEach(item => {
-            doc.text(item.component_name, 315, dedY);
+            doc.fillColor('black').fontSize(9).font('Helvetica').text(item.component_name, 315, dedY);
             doc.text(parseFloat(item.amount).toFixed(2), 465, dedY, { align: 'right', width: 75 });
-            dedY += 15;
+            dedY += 12;
+            if (item.details && item.details !== 'Auto-snapshot from Master Baseline') {
+                doc.fillColor('#6b7280').fontSize(7).font('Helvetica-Oblique').text(item.details, 325, dedY, { width: 150 });
+                dedY += doc.heightOfString(item.details, { width: 150 }) + 5;
+            } else {
+                dedY += 5;
+            }
         });
 
         const maxTableHeight = Math.max(earnY, dedY) + 10;

@@ -35,6 +35,8 @@ const Payroll = () => {
     const [showPaymentModal, setShowPaymentModal] = useState(null); // liability record
     const [paymentForm, setPaymentForm] = useState({ ref: '', date: new Date().toISOString().split('T')[0], method: 'Bank Transfer', notes: '' });
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [selectedPayrollDetails, setSelectedPayrollDetails] = useState(null); // { payroll, details: [] }
+    const [loadingDetails, setLoadingDetails] = useState(false);
     const { user } = useAuth();
     const isAdmin = user?.role === 'Admin' || user?.role === 'HR Manager';
 
@@ -115,6 +117,18 @@ const Payroll = () => {
         } catch (error) {
             console.error(error);
             alert(`Failed to fetch contribution matrix: ${error.response?.data?.message || error.message}`);
+        }
+    };
+
+    const fetchPayrollDetails = async (id) => {
+        setLoadingDetails(true);
+        try {
+            const response = await api.get(`/payroll/${id}`);
+            setSelectedPayrollDetails(response.data || null);
+        } catch (error) {
+            alert('Failed to fetch details');
+        } finally {
+            setLoadingDetails(false);
         }
     };
 
@@ -338,7 +352,7 @@ const Payroll = () => {
                                         <tr key={pay.id} className="group transition-all">
                                             <td className="bg-slate-50/60 rounded-l-[1.5rem] px-8 py-6 first:border-l border-y border-slate-50 first:shadow-sm">
                                                 <span className="font-mono text-xs font-black text-slate-400 bg-white px-3 py-1.5 rounded-lg border border-slate-100 shadow-sm">
-                                                    #{pay.id.toString().padStart(4, '0')}
+                                                    #{pay?.id?.toString().padStart(4, '0') || '0000'}
                                                 </span>
                                             </td>
                                             <td className="bg-slate-50/60 border-y border-slate-50 px-8 py-6">
@@ -389,9 +403,16 @@ const Payroll = () => {
                                                         </button>
                                                     )}
                                                     <button
+                                                        onClick={() => fetchPayrollDetails(pay.id)}
+                                                        className="h-10 w-10 flex items-center justify-center bg-white text-primary-600 rounded-xl hover:bg-primary-600 hover:text-white transition-all shadow-md border border-slate-100"
+                                                        title="View Details"
+                                                    >
+                                                        <Search size={14} />
+                                                    </button>
+                                                    <button
                                                         onClick={() => handleDownloadPayslip(pay.id, pay.month)}
                                                         className="h-10 w-10 flex items-center justify-center bg-white text-slate-400 rounded-xl hover:bg-slate-900 hover:text-white transition-all shadow-md border border-slate-100"
-                                                        title="Archive"
+                                                        title="Download PDF"
                                                     >
                                                         <Download size={14} />
                                                     </button>
@@ -744,6 +765,92 @@ const Payroll = () => {
             </main>
 
             {/* Components */}
+            {/* MODAL: Payroll Details Breakdown */}
+            {selectedPayrollDetails && (
+                <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl flex items-center justify-center z-[120] p-6 animate-in zoom-in-95 duration-300">
+                    <div className="bg-white w-full max-w-2xl rounded-[3.5rem] overflow-hidden shadow-2xl border border-white/5 flex flex-col max-h-[85vh]">
+                        <div className="p-10 bg-[#0f172a] text-white relative overflow-hidden flex-shrink-0">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-primary-600/20 blur-[80px] -mr-24 -mt-24"></div>
+                            <div className="relative z-10 flex justify-between items-center">
+                                <div>
+                                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-500/20 text-primary-300 text-[10px] font-black uppercase tracking-widest mb-3">
+                                        Component Analysis
+                                    </div>
+                                    <h2 className="text-3xl font-black uppercase tracking-tight">Salary <span className="text-primary-500">Breakdown</span></h2>
+                                    <p className="text-slate-400 text-xs font-black uppercase tracking-widest mt-1">Ref: #{selectedPayrollDetails.summary?.id?.toString().padStart(4, '0') || 'N/A'} // {selectedPayrollDetails.summary?.month || 'N/A'}</p>
+                                </div>
+                                <button onClick={() => setSelectedPayrollDetails(null)} className="p-4 bg-white/5 hover:bg-white/10 rounded-2xl transition-all border border-white/10 group">
+                                    <Plus size={20} className="rotate-45 group-hover:rotate-[135deg] transition-transform duration-500" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 p-10 overflow-y-auto space-y-3">
+                            {/* Summary Cards */}
+                            <div className="grid grid-cols-2 gap-4 mb-8">
+                                <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">Gross Earnings</p>
+                                    <p className="text-2xl font-black text-slate-900 tabular-nums">
+                                        <span className="text-xs text-slate-400 mr-1 font-black italic">LKR</span>
+                                        {selectedPayrollDetails.breakdown?.filter(d => d.type === 'Earning').reduce((sum, d) => sum + parseFloat(d.amount || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}
+                                    </p>
+                                </div>
+                                <div className="p-6 bg-rose-50 rounded-2xl border border-rose-100">
+                                    <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest mb-1 italic">Total Deductions</p>
+                                    <p className="text-2xl font-black text-rose-600 tabular-nums">
+                                        <span className="text-xs text-rose-300 mr-1 font-black italic">LKR</span>
+                                        {selectedPayrollDetails.breakdown?.filter(d => d.type !== 'Earning').reduce((sum, d) => sum + parseFloat(d.amount || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 pl-2">Detailed Components</p>
+                            
+                            {selectedPayrollDetails.breakdown?.map((comp, idx) => (
+                                <div key={idx} className="flex flex-col p-5 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white hover:border-primary-100 transition-all group">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-4">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] ${
+                                                comp.type === 'Earning' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'
+                                            }`}>
+                                                {comp.type === 'Earning' ? '+' : '-'}
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-slate-900 text-sm tracking-tight">{comp.component_name}</p>
+                                                <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{comp.type}</p>
+                                            </div>
+                                        </div>
+                                        <p className={`font-black tabular-nums ${comp.type === 'Earning' ? 'text-slate-900' : 'text-rose-600'}`}>
+                                            Rs. {parseFloat(comp.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </p>
+                                    </div>
+                                    {comp.details && comp.details !== 'Auto-snapshot from Master Baseline' && (
+                                        <div className="mt-3 bg-white/50 p-3 rounded-xl border border-slate-100 text-[10px] text-slate-500 font-bold italic leading-relaxed">
+                                            {comp.details}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="p-10 bg-slate-50 border-t border-slate-100 flex-shrink-0 flex justify-between items-center">
+                            <div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Disbursed Net Salary</p>
+                                <p className="text-3xl font-black text-slate-900 tracking-tighter tabular-nums">
+                                    <span className="text-sm text-primary-500 mr-2 font-black italic">LKR</span>
+                                    {Number(selectedPayrollDetails.summary?.net_salary || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setSelectedPayrollDetails(null)}
+                                className="px-10 py-5 bg-slate-950 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-200"
+                            >
+                                Close Breakdown
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {showAdd && <AddPayroll close={() => { setShowAdd(false); fetchData(); }} />}
         </div>
     );

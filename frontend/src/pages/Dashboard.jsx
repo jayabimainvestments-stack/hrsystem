@@ -33,7 +33,9 @@ const Dashboard = () => {
         pendingLeaves: 0,
         attendanceToday: 0,
         latestPayroll: 'N/A',
-        attendanceIssues: []
+        attendanceIssues: [],
+        pendingFinancial: 0,
+        myPerformance: 0
     });
     const [loading, setLoading] = useState(true);
     const [currentTime, setCurrentTime] = useState(new Date());
@@ -103,17 +105,17 @@ const Dashboard = () => {
                 let attTodayCount = 0;
 
                 if (isAdmin) {
-                    const empRes = results[1];
-                    const leaveRes = results[2];
-                    const attRes = results[3];
+                    const empRes = results[1] || {};
+                    const leaveRes = results[2] || {};
+                    const attRes = results[3] || {};
 
-                    if (!empRes.error) empCount = empRes.data.length;
-                    if (!leaveRes.error) pendingCount = leaveRes.data.filter(l => l.status === 'Pending').length;
-                    if (!attRes.error) attTodayCount = attRes.data.length;
+                    if (!empRes.error && Array.isArray(empRes.data)) empCount = empRes.data.length;
+                    if (!leaveRes.error && Array.isArray(leaveRes.data)) pendingCount = leaveRes.data.filter(l => l.status === 'Pending').length;
+                    if (!attRes.error && Array.isArray(attRes.data)) attTodayCount = attRes.data.length;
                 } else {
-                    const myLeavesRes = results[1];
+                    const myLeavesRes = results[1] || {};
                     // For employee, pending leaves are their own pending requests
-                    if (!myLeavesRes.error) pendingCount = myLeavesRes.data.filter(l => l.status === 'Pending').length;
+                    if (!myLeavesRes.error && Array.isArray(myLeavesRes.data)) pendingCount = myLeavesRes.data.filter(l => l.status === 'Pending').length;
                 }
 
                 // Payroll & Financial check
@@ -132,12 +134,14 @@ const Dashboard = () => {
                 if (isAdmin) {
                     try {
                         const payrollRes = await api.get('/payroll');
-                        if (payrollRes.data.length > 0) {
+                        if (payrollRes.data && Array.isArray(payrollRes.data) && payrollRes.data.length > 0) {
                             latestMonth = payrollRes.data[0].month;
                         }
 
                         const finRes = await api.get('/financial/requests');
-                        financialPending = finRes.data.filter(r => r.status === 'Pending').length;
+                        if (finRes.data && Array.isArray(finRes.data)) {
+                            financialPending = finRes.data.filter(r => r.status === 'Pending').length;
+                        }
 
                     } catch (e) {
                         console.warn("Payroll/Financial stats unavailable");
@@ -151,7 +155,7 @@ const Dashboard = () => {
                     latestPayroll: latestMonth,
                     pendingFinancial: financialPending,
                     myPerformance: myPerfMarks,
-                    attendanceIssues: myAttendance.filter(a => a.status === 'Absent' || a.status === 'Late')
+                    attendanceIssues: Array.isArray(myAttendance) ? myAttendance.filter(a => a.status === 'Absent' || a.status === 'Late') : []
                 });
 
             } catch (error) {
@@ -197,7 +201,7 @@ const Dashboard = () => {
                                 </h2>
                             </div>
                             <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight leading-none mb-2">
-                                Salutations, <span className="text-primary-600 font-black">{formatName(user.name)}</span>.
+                                Salutations, <span className="text-primary-600 font-black">{formatName(user?.name)}</span>.
                             </h1>
                             <p className="text-slate-500 text-sm font-medium max-w-xl leading-relaxed">
                                 Welcome to your central command center. All systems operational.

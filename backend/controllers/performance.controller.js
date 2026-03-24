@@ -1,5 +1,28 @@
 const db = require('../config/db');
 
+/**
+ * Enterprise Rule: Performance marks for the week containing or following the 25th 
+ * of the month are deferred to the next month's salary.
+ * @param {string} weekEnding 
+ * @param {string} payrollMonth (YYYY-MM)
+ * @returns {boolean}
+ */
+const isDeferredWeek = (weekEnding, payrollMonth) => {
+    if (!weekEnding || !payrollMonth) return false;
+    const ending = new Date(weekEnding);
+    const day = ending.getUTCDate(); // Use UTC to avoid timezone shifts
+    const endingMonthPart = ending.toISOString().split('T')[0].substring(0, 7);
+
+    // If it's already processed for this specific month, keep it
+    // But for Pending items:
+    // 1. If it ends in a later month than the target payrollMonth
+    if (endingMonthPart > payrollMonth) return true;
+    // 2. If it ends in the same month and is on or after the 25th
+    if (endingMonthPart === payrollMonth && day >= 25) return true;
+
+    return false;
+};
+
 // @desc    Create/Submit a performance appraisal
 // @route   POST /api/performance
 // @access  Private (Managers/HR)
@@ -198,12 +221,14 @@ const getPerformanceSummary = async (req, res) => {
         // 1. Get weekly data that is either:
         //    a) Already processed for this month (historical)
         //    b) Still Pending (part of the current "accumulated" buffer) - ONLY IF NOT APPROVED
+        // RULE: Defer any Pending week ending on or after the 25th of the month to the next month
+        const cutoffDate = `${month}-25`;
         let query = `
             SELECT wd.*, m.name as metric_name
             FROM performance_weekly_data wd
             JOIN performance_metrics m ON wd.metric_id = m.id
             WHERE wd.employee_id = $1 
-              AND (wd.payroll_month = $2 ${!isApproved ? "OR wd.status = 'Pending'" : ""})
+              AND (wd.payroll_month = $2 ${!isApproved ? `OR (wd.status = 'Pending' AND wd.week_ending < '${cutoffDate}')` : ""})
         `;
         const weeklyData = await db.query(query, [employeeId, month]);
 
@@ -331,20 +356,18 @@ const getMonthlyApprovals = async (req, res) => {
             return acc;
         }, {});
 
-        const isMonthClosed = approvalStatusRes.rows.some(r => r.status === 'Approved');
-
         // 2. Get all weekly data that is either:
         //    a) Already processed for this month
-        //    b) Still Pending (ONLY if month is not closed)
+        //    b) Still Pending
+        // RULE: Defer any Pending week ending on or after the 25th of the month
+        const cutoffDate = `${month}-25`;
         let weeklyQuery = `
-            SELECT wd.employee_id, wd.metric_id, wd.value, wd.week_starting, wd.status
+            SELECT wd.employee_id, wd.metric_id, wd.value, wd.week_starting, wd.week_ending, wd.status
             FROM performance_weekly_data wd
-            WHERE wd.payroll_month = $1
+            WHERE wd.payroll_month = $1 
+               OR (wd.status = 'Pending' AND wd.week_ending < $2)
         `;
-        if (!isMonthClosed) {
-            weeklyQuery += ` OR wd.status = 'Pending' `;
-        }
-        const weeklyDataRes = await db.query(weeklyQuery, [month]);
+        const weeklyDataRes = await db.query(weeklyQuery, [month, cutoffDate]);
 
         // 4. Get all targets
         const targetsRes = await db.query('SELECT * FROM employee_performance_targets');
@@ -403,8 +426,12 @@ const getMonthlyApprovals = async (req, res) => {
 const updateMonthlyApproval = async (req, res) => {
     const { employee_id, month, total_marks, total_amount, status } = req.body;
 
+    const client = await db.pool.connect();
     try {
-        await db.query(`
+        await client.query('BEGIN');
+
+        // 1. Update/Insert into performance_monthly_approvals
+        await client.query(`
             INSERT INTO performance_monthly_approvals (employee_id, month, total_marks, total_amount, status, approved_by, approved_at)
             VALUES ($1, $2, $3, $4, $5, $6, NOW())
             ON CONFLICT (employee_id, month)
@@ -417,9 +444,24 @@ const updateMonthlyApproval = async (req, res) => {
                 updated_at = NOW()
         `, [employee_id, month, total_marks, total_amount, status, req.user.id]);
 
+        // 2. If status is 'Approved', mark all 'Pending' weekly data for this employee as 'Processed' for this month
+        // RULE: Only process weeks ending BEFORE the 25th
+        if (status === 'Approved') {
+            const cutoffDate = `${month}-25`;
+            await client.query(`
+                UPDATE performance_weekly_data 
+                SET status = 'Processed', payroll_month = $1, updated_at = NOW() 
+                WHERE employee_id = $2 AND status = 'Pending' AND week_ending < $3
+            `, [month, employee_id, cutoffDate]);
+        }
+
+        await client.query('COMMIT');
         res.status(200).json({ message: `Monthly performance ${status.toLowerCase()} successfully` });
     } catch (error) {
+        await client.query('ROLLBACK');
         res.status(500).json({ message: error.message });
+    } finally {
+        client.release();
     }
 };
 
@@ -438,7 +480,9 @@ const approveAllMonthlyPerformance = async (req, res) => {
 
         // 1. Get all active employees
         const employeesRes = await client.query(`
-            SELECT e.id, e.nic_passport as code, u.name, e.department
+            SELECT e.id, 
+                   COALESCE(e.epf_no, e.biometric_id, CAST(e.id AS VARCHAR)) as emp_code,
+                   u.name, e.department
             FROM employees e
             JOIN users u ON e.user_id = u.id
             WHERE e.employment_status = 'Active'
@@ -446,12 +490,14 @@ const approveAllMonthlyPerformance = async (req, res) => {
 
         // 2. Get all weekly data that is either:
         //    a) Already processed for this month (re-calculating if needed)
-        //    b) Still Pending (CONSOMING these)
+        //    b) Still Pending (CONSUMING these weeks ending before the 25th)
+        // RULE: Defer any Pending week ending on or after the 25th of the month
+        const cutoffDate = `${month}-25`;
         const weeklyDataRes = await client.query(`
-            SELECT wd.id, wd.employee_id, wd.metric_id, wd.value, wd.week_starting, wd.status
+            SELECT wd.id, wd.employee_id, wd.metric_id, wd.value, wd.week_starting, wd.week_ending, wd.status
             FROM performance_weekly_data wd
-            WHERE wd.payroll_month = $1 OR wd.status = 'Pending'
-        `, [month]);
+            WHERE wd.payroll_month = $1 OR (wd.status = 'Pending' AND wd.week_ending < $2)
+        `, [month, cutoffDate]);
 
         // 3. Get all targets
         const targetsRes = await client.query('SELECT * FROM employee_performance_targets');
@@ -551,6 +597,7 @@ const approveAllMonthlyPerformance = async (req, res) => {
         client.release();
     }
 };
+
 
 const getPerformanceMonthStatus = async (req, res) => {
     const { month } = req.query;
