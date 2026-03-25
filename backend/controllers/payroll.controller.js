@@ -66,15 +66,16 @@ const calculateSplitFuelAllowance = async (client, totalLiters, startDate, endDa
         let priceSegments = {}; // { price: days }
         let dailyBreakdown = [];
 
-        // 3. Calculate daily amount based on price history
+        // 3. Pre-fetch all fuel prices to avoid N+1 DB queries per day
+        const priceCacheRes = await client.query('SELECT effective_from_date, price_per_liter FROM fuel_price_history ORDER BY effective_from_date DESC');
+        const priceHistory = priceCacheRes.rows.map(r => ({ date: new Date(r.effective_from_date), price: parseFloat(r.price_per_liter) }));
+
+        // 4. Calculate daily amount based on cached price history
         for (const date of workingDays) {
-            const priceRes = await client.query(`
-                SELECT price_per_liter FROM fuel_price_history 
-                WHERE effective_from_date <= $1 
-                ORDER BY effective_from_date DESC LIMIT 1
-            `, [date]);
+            const currentDate = new Date(date);
+            const applicable = priceHistory.find(h => h.date <= currentDate);
             
-            const price = priceRes.rows.length > 0 ? parseFloat(priceRes.rows[0].price_per_liter) : 0;
+            const price = applicable ? applicable.price : 0;
             const amount = dailyQuota * price;
             totalAmount += amount;
             
@@ -176,12 +177,19 @@ const createPayroll = async (req, res) => {
         }
 
         // Upsert each baseline component into monthly_salary_overrides (only if not already overridden)
-        for (const comp of baselineRes.rows) {
+        if (baselineRes.rows.length > 0) {
+            const values = [];
+            const flatValues = [];
+            let p_index = 1;
+            for (const comp of baselineRes.rows) {
+                values.push(`($${p_index++}, $${p_index++}, $${p_index++}, $${p_index++}, $${p_index++}, 'Approved', 'Auto-snapshot from Master Baseline')`);
+                flatValues.push(employee.id, datePrefix, comp.component_id, comp.amount, comp.quantity);
+            }
             await client.query(`
                 INSERT INTO monthly_salary_overrides (employee_id, month, component_id, amount, quantity, status, reason)
-                VALUES ($1, $2, $3, $4, $5, 'Approved', 'Auto-snapshot from Master Baseline')
+                VALUES ${values.join(', ')}
                 ON CONFLICT (employee_id, month, component_id) DO NOTHING
-            `, [employee.id, datePrefix, comp.component_id, comp.amount, comp.quantity]);
+            `, flatValues);
         }
 
         // RULE 1+2: Now fetch all Approved components for this month
@@ -445,55 +453,67 @@ const createPayroll = async (req, res) => {
         );
         const payrollId = payrollRes.rows[0].id;
 
-        for (const item of breakdown) {
-            await client.query(
-                `INSERT INTO payroll_details (payroll_id, component_name, amount, type, details) VALUES ($1, $2, $3, $4, $5)`,
-                [payrollId, item.name, item.amount, item.type, item.details]
-            );
+        if (breakdown.length > 0) {
+            const values = [];
+            const flatValues = [];
+            let p_index = 1;
+            for (const item of breakdown) {
+                values.push(`($${p_index++}, $${p_index++}, $${p_index++}, $${p_index++}, $${p_index++})`);
+                flatValues.push(payrollId, item.name, item.amount, item.type, item.details);
+            }
+            await client.query(`
+                INSERT INTO payroll_details (payroll_id, component_name, amount, type, details) 
+                VALUES ${values.join(', ')}
+            `, flatValues);
         }
 
         // --- 7.1 Post-Processing: Decrement Loan Installments ONLY if applied ---
+        const structurePromises = [];
         for (const comp of components) {
             if (comp.name.toLowerCase().includes('loan') && comp.installments_remaining > 0 && appliedComponentIds.has(comp.component_id)) {
-                await client.query(`
+                structurePromises.push(client.query(`
                     UPDATE employee_salary_structure 
                     SET installments_remaining = installments_remaining - 1 
                     WHERE employee_id = $1 AND component_id = $2
-                `, [employee.id, comp.component_id]);
+                `, [employee.id, comp.component_id]));
             }
         }
+        if (structurePromises.length > 0) await Promise.all(structurePromises);
 
         // New Loan Tracker Post-Processing
+        const loanInstPromises = [];
         const loanInstallments = breakdown.filter(i => i.loan_id);
         for (const inst of loanInstallments) {
-            await client.query(`
+            loanInstPromises.push(client.query(`
                 UPDATE employee_loans 
                 SET installments_paid = installments_paid + 1,
                     status = CASE WHEN (installments_paid + 1) >= num_installments THEN 'Completed' ELSE status END,
                     updated_at = NOW()
                 WHERE id = $1
-            `, [inst.loan_id]);
+            `, [inst.loan_id]));
 
             // Log into loan_payments for history tracking
-            await client.query(`
+            loanInstPromises.push(client.query(`
                 INSERT INTO loan_payments (loan_id, payment_date, amount, type, month, note, created_by)
                 VALUES ($1, CURRENT_DATE, $2, 'payroll', $3, $4, $5)
-            `, [inst.loan_id, inst.amount, datePrefix, `Payroll deduction for ${month} ${processingYear}`, req.user.id]);
+            `, [inst.loan_id, inst.amount, datePrefix, `Payroll deduction for ${month} ${processingYear}`, req.user.id]));
         }
+        if (loanInstPromises.length > 0) await Promise.all(loanInstPromises);
 
         // 8. Update Liabilities & Audit Log
-        await updateLiability(client, datePrefix, 'EPF 8%', epf_employee);
-        await updateLiability(client, datePrefix, 'EPF 12%', epf_employer);
-        await updateLiability(client, datePrefix, 'ETF 3%', etf_employer);
-        if (incomeTax > 0) await updateLiability(client, datePrefix, 'PAYE Tax', incomeTax);
+        const liabilityPromises = [];
+        liabilityPromises.push(updateLiability(client, datePrefix, 'EPF 8%', epf_employee));
+        liabilityPromises.push(updateLiability(client, datePrefix, 'EPF 12%', epf_employer));
+        liabilityPromises.push(updateLiability(client, datePrefix, 'ETF 3%', etf_employer));
+        if (incomeTax > 0) liabilityPromises.push(updateLiability(client, datePrefix, 'PAYE Tax', incomeTax));
         if (welfareAmount > 0) {
-            await updateLiability(client, datePrefix, 'Welfare 2%', welfareAmount);
-            // Record in Welfare Ledger
-            await client.query(`
+            liabilityPromises.push(updateLiability(client, datePrefix, 'Welfare 2%', welfareAmount));
+            liabilityPromises.push(client.query(`
                 INSERT INTO welfare_ledger (transaction_date, type, amount, description, ref_id)
                 VALUES (CURRENT_DATE, 'Collection', $1, $2, $3)
-            `, [welfareAmount, `Welfare collection for ${employee.name} (${datePrefix})`, payrollId]);
+            `, [welfareAmount, `Welfare collection for ${employee.name} (${datePrefix})`, payrollId]));
         }
+        await Promise.all(liabilityPromises);
 
         // Enterprise Audit Log
         await client.query(`

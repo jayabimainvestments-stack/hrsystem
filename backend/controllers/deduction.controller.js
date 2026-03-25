@@ -74,16 +74,18 @@ const calculateDeductions = async (req, res) => {
             const lastDay = new Date(year, m, 0).getDate();
             const endDate = `${month}-${lastDay}`;
 
-            // Fetch Absent Days (Total count of explicit 'Absent' records)
+            // Fetch Absent Days (Total count of explicit 'Absent' records + 0.5 for 'Incomplete' PAST DAYS ONLY)
             const absentRes = await client.query(`
-                SELECT COUNT(*) as count 
+                SELECT 
+                    COUNT(*) FILTER (WHERE status = 'Absent') as absent_full,
+                    COUNT(*) FILTER (WHERE status = 'Incomplete' AND date < CURRENT_DATE) as incomplete_count
                 FROM attendance 
                 WHERE employee_id = $1 
                 AND date >= $2 AND date <= $3 
-                AND status = 'Absent'
+                AND status IN ('Absent', 'Incomplete')
             `, [emp.id, startDate, endDate]);
 
-            let absentDays = parseInt(absentRes.rows[0].count);
+            let absentDays = parseInt(absentRes.rows[0].absent_full || 0) + (parseInt(absentRes.rows[0].incomplete_count || 0) * 0.5);
 
             // Fetch Approved Unpaid Leave Days
             const leaveRes = await client.query(`
@@ -100,17 +102,18 @@ const calculateDeductions = async (req, res) => {
             const unpaidLeaveDays = parseFloat(leaveRes.rows[0].total_unpaid);
             const totalAbsentDays = absentDays + unpaidLeaveDays;
 
-            // Fetch Late Hours
+            // Fetch Late Hours and Early Departure (Short Leave) Hours
             const lateRes = await client.query(`
-                SELECT SUM(EXTRACT(EPOCH FROM (clock_in - $1::time)) / 3600) as hours
+                SELECT 
+                    SUM(COALESCE(late_minutes, 0)) / 60.0 as late_hours,
+                    SUM(COALESCE(short_leave_hours, 0)) as early_hours
                 FROM attendance
-                WHERE employee_id = $2
-                AND date >= $3 AND date <= $4
-                AND clock_in > $1::time
-                AND status IN ('Present', 'Half Day')
-            `, [policy.work_start_time, emp.id, startDate, endDate]);
+                WHERE employee_id = $1
+                AND date >= $2 AND date <= $3
+                AND status IN ('Present', 'Late', 'Half Day', 'Incomplete')
+            `, [emp.id, startDate, endDate]);
 
-            const lateHours = parseFloat(lateRes.rows[0].hours || 0);
+            const lateHours = parseFloat(lateRes.rows[0].late_hours || 0) + parseFloat(lateRes.rows[0].early_hours || 0);
 
             // 5. Calculate Total Potential Deduction using unified logic
             const basicSalary = parseFloat(emp.basic_salary || 0);

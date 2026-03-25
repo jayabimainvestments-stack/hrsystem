@@ -131,9 +131,20 @@ const getEmployeeStructure = async (req, res) => {
               AND mo.status = 'Approved'
         `, [employeeId, currentMonth]);
 
-        // 3. Merge: add monthly-only items that are NOT in permanent structure
+        // 3. Merge: If a monthly override exists, it MUST overwrite the permanent structure's amount for this month
+        // Find existing ones to update
         for (const mo of monthlyRes.rows) {
-            if (!permanentIds.has(mo.component_id)) {
+            if (permanentIds.has(mo.component_id)) {
+                // Update the existing permanent item with the monthly overridden amount
+                const target = structure.find(s => s.component_id === mo.component_id);
+                if (target) {
+                    target.amount = mo.amount;
+                    target.quantity = mo.quantity;
+                    target.is_monthly_only = true;
+                    target.lock_reason = mo.reason || 'Monthly override applied over baseline';
+                }
+            } else {
+                // Add new monthly-only items
                 structure.push({
                     ...mo,
                     installments_remaining: null,
@@ -206,7 +217,10 @@ const updateEmployeeStructure = async (req, res) => {
                         reason || 'Salary modification'
                     ]
                 );
-                return res.status(200).json({ message: 'Salary modifications submitted for approval.' });
+                return res.status(200).json({ message: 'Salary modifications submitted for approval. Please check Governance Hub → Pending Actions.' });
+            } else {
+                // No actual changes detected — all submitted values match current DB values
+                return res.status(200).json({ message: 'No changes detected. The submitted values are identical to the current salary structure.' });
             }
         }
 

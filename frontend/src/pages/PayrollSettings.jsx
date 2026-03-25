@@ -212,11 +212,30 @@ const PayrollSettings = () => {
             })).filter(c => c.amount > 0 || c.quantity > 0 || c.installments_remaining !== null)
         };
 
+        if (payload.components.length === 0) {
+            return alert('No salary components to save. Please enter at least one amount.');
+        }
+
         try {
-            await api.post('/payroll-settings/structure', payload);
-            alert('Salary Structure Saved Successfully');
+            const res = await api.post('/payroll-settings/structure', payload);
+            const msg = res.data?.message || '';
+            if (msg.toLowerCase().includes('approval') || msg.toLowerCase().includes('submitted')) {
+                alert('✅ ලොකු වෙනසක් හඳවිම! \n\nඔබේ Salary Structure Modification Governance Hub → Pending Actions (Approvals) වලට Submit කෙරී ඇත.\n\nAdmin/HR Manager විසින් Approve කිරීමෙන් පසු Payroll Generate කිරීමේදී නව අගයන් ක්‍රියාත්මක වේ.');
+            } else {
+                alert('Salary Structure Updated Successfully');
+            }
+            // Reload structure to reflect current values
+            const refreshRes = await api.get(`/payroll-settings/structure/${selectedEmployee}`);
+            const structureMap = {};
+            const metaMap = {};
+            (refreshRes.data || []).forEach(item => {
+                structureMap[item.component_id] = { amount: item.amount, quantity: item.quantity, installments_remaining: item.installments_remaining };
+                metaMap[item.component_id] = item.is_monthly_only ? 'monthly' : (item.is_historical ? 'historical' : 'override');
+            });
+            setEmpStructure(structureMap);
+            setSourceMeta(metaMap);
         } catch (error) {
-            alert('Failed to save structure');
+            alert('Failed to save structure: ' + (error.response?.data?.message || error.message));
         }
     };
 

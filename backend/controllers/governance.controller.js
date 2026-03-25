@@ -16,12 +16,12 @@ const getPendingChanges = async (req, res) => {
                      WHEN p.entity = 'employee_bank_details' THEN 'BANK'
                      ELSE 'SALARY' 
                    END as type,
-                   COALESCE(tu.name, bank_u.name, att_u.name, emp_direct.name) as target_name
+                   COALESCE(tu.name, bank_u.name, att_u.name, fallback_u.name) as target_name
             FROM pending_changes p
             LEFT JOIN users u ON p.requested_by = u.id
             
-            -- 1. Link to target employee (Salary/General/Structure) - entity_id is employee_id
-            LEFT JOIN employees te ON (p.entity IN ('employee_salary_structure', 'salary_structures', 'employees')) 
+            -- 1. Link to target employee (Salary/General/Structure) - entity_id is employee_id OR user_id
+            LEFT JOIN employees te ON (p.entity IN ('employee_salary_structure', 'salary_structures', 'employees', 'financial_requests')) 
                                    AND te.id::text = p.entity_id
             LEFT JOIN users tu ON te.user_id = tu.id
             
@@ -34,11 +34,10 @@ const getPendingChanges = async (req, res) => {
             LEFT JOIN employees att_e ON att.employee_id = att_e.id
             LEFT JOIN users att_u ON att_e.user_id = att_u.id
             
-            -- 4. Fallback: numeric entity_id -> direct employee link
-            LEFT JOIN employees e_dir ON (p.entity NOT IN ('attendance', 'financial_requests')) 
-                                     AND p.entity_id ~ '^[0-9]+$'
-                                     AND e_dir.id::text = p.entity_id
-            LEFT JOIN users emp_direct ON e_dir.user_id = emp_direct.id
+            -- 4. Fallback: if it's a numeric ID but not caught above
+            LEFT JOIN users fallback_u ON (tu.id IS NULL AND bank_u.id IS NULL AND att_u.id IS NULL)
+                                      AND p.entity_id ~ '^[0-9]+$'
+                                      AND fallback_u.id::text = p.entity_id
             
             WHERE p.status = 'Pending'
         `);
