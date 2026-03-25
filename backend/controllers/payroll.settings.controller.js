@@ -370,6 +370,15 @@ const deleteMonthlyOverride = async (req, res) => {
     }
 };
 
+const deleteAllMonthlyOverrides = async (req, res) => {
+    try {
+        await db.query('DELETE FROM monthly_salary_overrides');
+        res.status(200).json({ message: 'All monthly overrides removed' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 const updateMonthlyOverrides = async (req, res) => {
     const { employee_id, month, components, reason } = req.body;
     if (!employee_id || !month || !components) return res.status(400).json({ message: 'Missing required fields' });
@@ -401,17 +410,17 @@ const getConsolidatedBaseline = async (req, res) => {
             SELECT 
                 e.id, 
                 e.employee_id as emp_code, 
-                u.name, 
+                COALESCE(u.name, u.email, 'Employee ' || e.employee_id) as name, 
                 e.designation,
-                SUM(CASE WHEN sc.type = 'Earning' THEN es.amount ELSE 0 END) as total_earnings,
-                SUM(CASE WHEN sc.type = 'Deduction' THEN es.amount ELSE 0 END) as total_deductions
+                COALESCE(SUM(CASE WHEN sc.type = 'Earning' THEN es.amount ELSE 0 END), 0) as total_earnings,
+                COALESCE(SUM(CASE WHEN sc.type = 'Deduction' THEN es.amount ELSE 0 END), 0) as total_deductions
             FROM employees e
-            JOIN users u ON e.user_id = u.id
+            LEFT JOIN users u ON e.user_id = u.id
             LEFT JOIN employee_salary_structure es ON e.id = es.employee_id
             LEFT JOIN salary_components sc ON es.component_id = sc.id
-            WHERE e.employment_status = 'Active'
-            GROUP BY e.id, u.name, e.employee_id, e.designation
-            ORDER BY u.name
+            WHERE (e.employment_status ILIKE 'Active' OR e.employment_status IS NULL)
+            GROUP BY e.id, u.name, u.email, e.employee_id, e.designation
+            ORDER BY COALESCE(u.name, u.email)
         `);
         
         // Also check for pending baseline sync for current month
