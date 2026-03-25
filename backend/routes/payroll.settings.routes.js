@@ -5,10 +5,14 @@ const {
     getTaxBrackets, createTaxBracket, deleteTaxBracket,
     getEmployeeStructure, updateEmployeeStructure, getFuelQuotas, deleteAllEmployeeStructures,
     snapshotBaseline, approveMonthlyOverride, bulkApproveOverrides, deleteMonthlyOverride, deleteAllMonthlyOverrides,
-    updateMonthlyOverrides
+    updateMonthlyOverrides, getConsolidatedBaseline, submitMasterBaseline
 } = require('../controllers/payroll.settings.controller');
 const { protect } = require('../middleware/auth.middleware');
 const { checkPermission } = require('../middleware/permission.middleware');
+
+// Consolidated Baseline
+router.get('/consolidated', protect, getConsolidatedBaseline);
+router.post('/submit-baseline', protect, checkPermission('MANAGE_SALARY_STRUCTURE'), submitMasterBaseline);
 
 // Components
 router.get('/components', protect, getComponents);

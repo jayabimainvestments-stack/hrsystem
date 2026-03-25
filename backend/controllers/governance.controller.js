@@ -16,7 +16,8 @@ const getPendingChanges = async (req, res) => {
                      WHEN p.entity = 'employee_bank_details' THEN 'BANK'
                      ELSE 'SALARY' 
                    END as type,
-                   COALESCE(tu.name, bank_u.name, att_u.name, fallback_u.name) as target_name
+                    COALESCE(tu.name, bank_u.name, att_u.name, fallback_u.name, 
+                            CASE WHEN p.entity = 'MASTER_BASELINE_SYNC' THEN 'ORGANIZATION-WIDE' ELSE NULL END) as target_name
             FROM pending_changes p
             LEFT JOIN users u ON p.requested_by = u.id
             
@@ -207,6 +208,17 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
             const change = changeRes.rows[0];
 
             if (action === 'Approve') {
+                if (change.entity === 'MASTER_BASELINE_SYNC') {
+                    // This is a virtual marker for the whole month. 
+                    // No data needs moving, we just update the status of this change to 'Approved'
+                    await client.query(
+                        'UPDATE pending_changes SET status = $1, approved_by = $2, updated_at = NOW() WHERE id = $3',
+                        [status, req.user.id, id]
+                    );
+                    await client.query('COMMIT');
+                    return res.status(200).json({ message: `Master Baseline for ${change.field_name} approved and finalized.` });
+                }
+
                 if (change.field_name === 'MULTIPLE_COMPONENTS') {
                     const updates = JSON.parse(change.new_value);
                     for (const update of updates) {

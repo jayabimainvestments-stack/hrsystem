@@ -206,15 +206,16 @@ const updateEmployeeStructure = async (req, res) => {
 
             if (changedComponents.length > 0) {
                 await db.query(
-                    `INSERT INTO pending_changes (entity, entity_id, field_name, new_value, requested_by, reason)
-                     VALUES ($1, $2, $3, $4, $5, $6)`,
+                    `INSERT INTO pending_changes (entity, entity_id, field_name, new_value, requested_by, reason, status)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                     [
                         'employee_salary_structure',
                         employee_id,
                         'MULTIPLE_COMPONENTS',
                         JSON.stringify(changedComponents),
                         req.user.id,
-                        reason || 'Salary modification'
+                        reason || 'Salary modification',
+                        'Pending'
                     ]
                 );
                 return res.status(200).json({ message: 'Salary modifications submitted for approval. Please check Governance Hub → Pending Actions.' });
@@ -394,15 +395,58 @@ const updateMonthlyOverrides = async (req, res) => {
     }
 };
 
-const deleteAllMonthlyOverrides = async (req, res) => {
-    const { employee_id, month } = req.query;
+const getConsolidatedBaseline = async (req, res) => {
     try {
-        let q = 'DELETE FROM monthly_salary_overrides WHERE 1=1';
-        const params = [];
-        if (employee_id) { params.push(employee_id); q += ` AND employee_id = $${params.length}`; }
-        if (month) { params.push(month); q += ` AND month = $${params.length}`; }
-        await db.query(q, params);
-        res.status(200).json({ message: 'All monthly overrides removed' });
+        const result = await db.query(`
+            SELECT 
+                e.id, 
+                e.employee_id as emp_code, 
+                u.name, 
+                e.designation,
+                SUM(CASE WHEN sc.type = 'Earning' THEN es.amount ELSE 0 END) as total_earnings,
+                SUM(CASE WHEN sc.type = 'Deduction' THEN es.amount ELSE 0 END) as total_deductions
+            FROM employees e
+            JOIN users u ON e.user_id = u.id
+            LEFT JOIN employee_salary_structure es ON e.id = es.employee_id
+            LEFT JOIN salary_components sc ON es.component_id = sc.id
+            WHERE e.employment_status = 'Active'
+            GROUP BY e.id, u.name, e.employee_id, e.designation
+            ORDER BY u.name
+        `);
+        
+        // Also check for pending baseline sync for current month
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        const syncStatus = await db.query(
+            "SELECT status FROM pending_changes WHERE entity = 'MASTER_BASELINE_SYNC' AND field_name = $1 ORDER BY created_at DESC LIMIT 1",
+            [currentMonth]
+        );
+
+        res.status(200).json({
+            employees: result.rows,
+            syncStatus: syncStatus.rows[0]?.status || 'Draft'
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const submitMasterBaseline = async (req, res) => {
+    const { month, reason } = req.body;
+    try {
+        const check = await db.query(
+            "SELECT id FROM pending_changes WHERE entity = 'MASTER_BASELINE_SYNC' AND field_name = $1 AND status = 'Pending'",
+            [month]
+        );
+        if (check.rows.length > 0) {
+            return res.status(400).json({ message: 'A baseline sync request is already pending for this month.' });
+        }
+
+        await db.query(
+            `INSERT INTO pending_changes (entity, field_name, new_value, requested_by, reason, status)
+             VALUES ($1, $2, $3, $4, $5, 'Pending')`,
+            ['MASTER_BASELINE_SYNC', month, 'FINALIZED', req.user.id, reason || `Master Baseline Sync for ${month}`, 'Pending']
+        );
+        res.status(200).json({ message: 'Master Baseline submitted for Governance approval.' });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -424,5 +468,7 @@ module.exports = {
     approveMonthlyOverride,
     bulkApproveOverrides,
     deleteMonthlyOverride,
-    deleteAllMonthlyOverrides
+    deleteAllMonthlyOverrides,
+    getConsolidatedBaseline,
+    submitMasterBaseline
 };

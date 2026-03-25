@@ -134,6 +134,22 @@ const createPayroll = async (req, res) => {
         const catalogRes = await client.query("SELECT * FROM salary_components WHERE status = 'Active'");
         const catalog = catalogRes.rows;
 
+        // --- MANDATORY MASTER BASELINE APPROVAL GUARD ---
+        // Any payroll generation for Month X MUST have an 'Approved' MASTER_BASELINE_SYNC record.
+        // This ensures the two-stage "Maker-Checker" flow: Verify Baseline -> Finalize -> Generate Payroll.
+        const baselineSyncRes = await client.query(
+            "SELECT status FROM pending_changes WHERE entity = 'MASTER_BASELINE_SYNC' AND field_name = $1 AND status = 'Approved'",
+            [datePrefix]
+        );
+
+        if (baselineSyncRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ 
+                message: `Payroll generation blocked: The Master Salary Baseline for ${month} ${processingYear} has not been approved in the Governance Hub. 
+                Please go to Master Salary Baseline -> Verify & Submit All, and ensure it is Approved before generating payroll.` 
+            });
+        }
+
         // Identify standard components from Catalog
         const findInCatalog = (keywords) => catalog.find(c => keywords.some(k => c.name.toLowerCase().includes(k.toLowerCase())));
         const compBasic = findInCatalog(['basic pay', 'basic salary']);
@@ -1415,7 +1431,7 @@ const getPayrollReadiness = async (req, res) => {
         const attendanceRes = await db.query(`
             SELECT 
                 COUNT(*) as total,
-                COUNT(*) FILTER (WHERE status IN ('Processed', 'Ignored')) as handled
+                COUNT(*) FILTER (WHERE status IN ('Processed', 'Ignored') OR total_amount = 0) as handled
             FROM attendance_deductions
             WHERE month = $1
         `, [datePrefix]);
@@ -1448,17 +1464,17 @@ const getPayrollReadiness = async (req, res) => {
                 COUNT(*) FILTER (WHERE mo.status = 'Approved') as approved
             FROM monthly_salary_overrides mo
             JOIN salary_components sc ON mo.component_id = sc.id
-            WHERE mo.month = $1 AND LOWER(sc.name) LIKE '%advance%'
+            WHERE mo.month = $1 AND LOWER(sc.name) LIKE '%advance%' AND mo.amount > 0
         `, [datePrefix]);
         const advanceStatus = {
             total: parseInt(advanceRes.rows[0].total),
             approved: parseInt(advanceRes.rows[0].approved)
         };
 
-        // 7. General Overrides (Anything else in Draft)
+        // 7. General Overrides (Anything else in Draft with non-zero amount)
         const draftOverridesRes = await db.query(`
             SELECT COUNT(*) FROM monthly_salary_overrides 
-            WHERE month = $1 AND status = 'Draft'
+            WHERE month = $1 AND status = 'Draft' AND amount > 0
             AND component_id NOT IN (
                 SELECT id FROM salary_components WHERE LOWER(name) LIKE '%fuel%' OR LOWER(name) LIKE '%advance%' OR LOWER(name) LIKE '%performance%'
             )

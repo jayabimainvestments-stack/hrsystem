@@ -23,6 +23,9 @@ const PayrollSettings = () => {
     const [selectedPermUser, setSelectedPermUser] = useState(null);
     const [hrManagers, setHrManagers] = useState([]);
     const [fuelPrice, setFuelPrice] = useState(370);
+    const [consolidatedBaseline, setConsolidatedBaseline] = useState([]);
+    const [baselineSyncStatus, setBaselineSyncStatus] = useState('Draft'); // Draft | Pending | Approved
+    const [monthYear, setMonthYear] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
 
 
     const { user } = useAuth();
@@ -53,10 +56,26 @@ const PayrollSettings = () => {
             ]);
             setTaxBrackets(taxRes.data || []);
             setSalaryComponents(compRes.data || []);
+            
+            // Fetch consolidated baseline as well
+            fetchConsolidatedBaseline();
         } catch (error) {
             console.error("Error fetching payroll settings", error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchConsolidatedBaseline = async () => {
+        setStructureLoading(true);
+        try {
+            const { data } = await api.get('/payroll-settings/consolidated');
+            setConsolidatedBaseline(data.employees || []);
+            setBaselineSyncStatus(data.syncStatus || 'Draft');
+        } catch (error) {
+            console.error("Error fetching consolidated baseline", error);
+        } finally {
+            setStructureLoading(false);
         }
     };
 
@@ -209,7 +228,7 @@ const PayrollSettings = () => {
                 installments_remaining: (data.installments_remaining !== undefined && data.installments_remaining !== null && data.installments_remaining !== '')
                     ? parseInt(data.installments_remaining)
                     : null
-            })).filter(c => c.amount > 0 || c.quantity > 0 || c.installments_remaining !== null)
+            })).filter(c => c.amount >= 0 || c.quantity >= 0 || c.installments_remaining !== null)
         };
 
         if (payload.components.length === 0) {
@@ -236,6 +255,22 @@ const PayrollSettings = () => {
             setSourceMeta(metaMap);
         } catch (error) {
             alert('Failed to save structure: ' + (error.response?.data?.message || error.message));
+        }
+    };
+
+    const handleSubmitBaseline = async () => {
+        const reason = window.prompt(`Submit Master Salary Baseline for ${monthYear} for Governance Approval? \nReason (Required):`);
+        if (!reason) return;
+
+        try {
+            await api.post('/payroll-settings/submit-baseline', {
+                month: monthYear,
+                reason
+            });
+            alert('Master Baseline submitted for verification! Check Governance → Pending Actions.');
+            fetchConsolidatedBaseline();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Submission failed');
         }
     };
 
@@ -515,187 +550,125 @@ const PayrollSettings = () => {
                         </div>
                     </div>
                 )}
-
                 {activeTab === 'structure' && (
-                    <div className="bg-white rounded-[4rem] shadow-2xl shadow-slate-200 border border-slate-50 p-16 animate-in slide-in-from-bottom duration-700">
-                        <div className="max-w-3xl mb-16 space-y-6">
-                            <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tighter">Master Salary Baseline</h2>
-                            <p className="text-slate-500 font-medium text-lg leading-relaxed">
-                                Define the permanent, default salary structure for employees. These values serve as the master template for all payroll cycles.
-                            </p>
+                    <div className="bg-white rounded-[4rem] shadow-2xl shadow-slate-200 border border-slate-50 p-12 lg:p-16 animate-in slide-in-from-bottom duration-700">
+                        <div className="flex flex-col lg:flex-row justify-between items-start gap-12 mb-16">
+                            <div className="max-w-2xl space-y-6">
+                                <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tighter leading-none">
+                                    Master Salary <span className="text-blue-600 italic underline decoration-blue-100 underline-offset-8">Baseline</span>
+                                </h2>
+                                <p className="text-slate-500 font-medium text-lg leading-relaxed">
+                                    Organization-wide verification hub. Review all permanent salary structures for the current month and finalize for payroll processing.
+                                </p>
 
-                            <div className="inline-flex items-center gap-3 px-6 py-3 bg-blue-50 border border-blue-100 rounded-2xl">
-                                <Activity size={16} className="text-blue-600 animate-pulse" />
-                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Current Salary Cycle:</span>
-                                <span className="text-sm font-black text-blue-900 tracking-tighter uppercase">
-                                    {new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}
-                                </span>
+                                <div className="flex flex-wrap gap-4">
+                                    <div className={`inline-flex items-center gap-3 px-6 py-3 rounded-2xl border transition-all ${
+                                        baselineSyncStatus === 'Approved' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
+                                        baselineSyncStatus === 'Pending' ? 'bg-amber-50 border-amber-100 text-amber-600' :
+                                        'bg-blue-50 border-blue-100 text-blue-600'
+                                    }`}>
+                                        <div className={`w-2 h-2 rounded-full ${baselineSyncStatus === 'Approved' ? 'bg-emerald-500' : baselineSyncStatus === 'Pending' ? 'bg-amber-500 animate-pulse' : 'bg-blue-500'}`}></div>
+                                        <span className="text-[10px] font-black uppercase tracking-[0.2em]">{baselineSyncStatus === 'Draft' ? 'Review Phase' : baselineSyncStatus} Baseline</span>
+                                    </div>
+                                    <div className="inline-flex items-center gap-3 px-6 py-3 bg-slate-900 text-slate-400 rounded-2xl border border-slate-800">
+                                        <span className="text-[10px] font-black uppercase tracking-[0.2em]">Target:</span>
+                                        <span className="text-xs font-black text-white">{new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div className="relative pt-6 max-w-xl">
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4 ml-2">Select Employee</label>
-                                <select
-                                    className="w-full bg-slate-50/50 border-2 border-slate-100 rounded-[2rem] px-8 py-6 font-black text-lg outline-none focus:ring-8 focus:ring-blue-500/5 appearance-none shadow-inner text-slate-800 transition-all"
-                                    value={selectedEmployee}
-                                    onChange={handleEmployeeSelect}
-                                >
-                                    <option value="">Choose an employee...</option>
-                                    {employees.map(emp => (
-                                        <option key={emp.id} value={emp.id}>
-                                            [{emp.employee_id || emp.nic_passport || 'No ID'}] {emp.name}
-                                        </option>
-                                    ))}
-                                </select>
+                            <button
+                                onClick={handleSubmitBaseline}
+                                disabled={baselineSyncStatus === 'Pending' || baselineSyncStatus === 'Approved'}
+                                className={`group relative overflow-hidden px-12 py-7 rounded-[2.5rem] font-black uppercase text-xs tracking-[0.3em] transition-all hover:scale-[1.05] active:scale-[0.95] shadow-2xl ${
+                                    baselineSyncStatus === 'Approved' ? 'bg-emerald-600 text-white cursor-default' :
+                                    baselineSyncStatus === 'Pending' ? 'bg-amber-100 text-amber-600 cursor-not-allowed' :
+                                    'bg-slate-900 text-white shadow-blue-500/20'
+                                }`}
+                            >
+                                <div className="relative z-10 flex items-center gap-4">
+                                    {baselineSyncStatus === 'Approved' ? (
+                                        <><Shield size={20} /> FINALIZED</>
+                                    ) : (
+                                        <><Save size={20} className={baselineSyncStatus === 'Draft' ? 'animate-bounce' : ''} /> Verify & Submit All</>
+                                    )}
+                                </div>
+                                {baselineSyncStatus === 'Draft' && <div className="absolute inset-x-0 bottom-0 h-1 bg-blue-500 animate-pulse"></div>}
+                            </button>
+                        </div>
+
+                        <div className="bg-slate-50 rounded-[3rem] border border-slate-100 overflow-hidden shadow-inner min-h-[400px]">
+                            <div className="overflow-x-auto">
+                                <table className="w-full border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-900/5 border-b border-slate-100">
+                                            {['Employee Code', 'Full Name', 'Permanent Earnings', 'Deductions', 'Baseline Net (LKR)', 'Actions'].map(h => (
+                                                <th key={h} className="px-10 py-8 text-left text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+                                                    {h}
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {structureLoading ? (
+                                            <tr>
+                                                <td colSpan={6} className="py-32 text-center text-slate-400 font-black uppercase text-xs tracking-widest italic animate-pulse">
+                                                    Fetching organization baseline...
+                                                </td>
+                                            </tr>
+                                        ) : consolidatedBaseline.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={6} className="py-32 text-center text-slate-400 italic">No active employees found.</td>
+                                            </tr>
+                                        ) : consolidatedBaseline.map(emp => {
+                                            const net = (parseFloat(emp.total_earnings) || 0) - (parseFloat(emp.total_deductions) || 0);
+                                            return (
+                                                <tr key={emp.id} className="group hover:bg-white transition-all">
+                                                    <td className="px-10 py-6 font-black text-xs text-blue-600 tracking-widest">{emp.emp_code}</td>
+                                                    <td className="px-10 py-6">
+                                                        <p className="font-black text-slate-800 uppercase tracking-tight text-sm">{emp.name}</p>
+                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{emp.designation}</p>
+                                                    </td>
+                                                    <td className="px-10 py-6 font-black text-sm text-emerald-600 tabular-nums">
+                                                        {Number(emp.total_earnings || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    </td>
+                                                    <td className="px-10 py-6 font-black text-sm text-rose-500 tabular-nums">
+                                                        -{Number(emp.total_deductions || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    </td>
+                                                    <td className="px-10 py-6">
+                                                        <span className="bg-white px-5 py-3 rounded-2xl border border-slate-100 font-black text-slate-900 tabular-nums text-base shadow-sm group-hover:shadow-lg transition-all">
+                                                            {net.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-10 py-6">
+                                                        <button 
+                                                            onClick={() => alert('Use Financial -> Permanent Salary to edit individual structures.') }
+                                                            className="p-4 rounded-xl text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-all"
+                                                        >
+                                                            <Settings size={20} />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
 
-                        {selectedEmployee && (() => {
-                            const emp = employees.find(e => e.id === parseInt(selectedEmployee));
-                            return (
-                                <div className="space-y-16 animate-in fade-in duration-500">
-                                    <div className="flex items-center gap-6 p-10 bg-blue-50/50 rounded-[2.5rem] border-2 border-blue-100/30">
-                                        <div className="w-20 h-20 rounded-[1.5rem] bg-blue-600 flex items-center justify-center text-white font-black text-3xl shadow-2xl shadow-blue-200">
-                                            {emp?.name?.charAt(0)}
-                                        </div>
-                                        <div>
-                                            <h3 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">{emp?.name}</h3>
-                                            <div className="flex gap-4 mt-2">
-                                                <span className="px-4 py-1.5 bg-white text-blue-600 rounded-full text-[9px] font-black uppercase tracking-widest outline outline-1 outline-blue-100 shadow-sm">
-                                                    ID: {emp?.employee_id || emp?.nic_passport || 'No ID'}
-                                                </span>
-                                                <span className="px-4 py-1.5 bg-white text-slate-500 rounded-full text-[9px] font-black uppercase tracking-widest outline outline-1 outline-slate-100 shadow-sm">
-                                                    {emp?.designation || 'Unassigned'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className={`grid grid-cols-1 lg:grid-cols-2 gap-16 transition-opacity duration-300 ${structureLoading ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
-                                        <div className="space-y-8">
-                                            <div className="flex items-center gap-4 border-b-2 border-slate-50 pb-6">
-                                                <div className="w-3 h-8 bg-emerald-500 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.3)]"></div>
-                                                <h4 className="font-black text-slate-900 uppercase tracking-[0.2em] text-lg italic">Earnings Spectrum</h4>
-                                            </div>
-                                            <div className="space-y-4">
-                                                {salaryComponents.filter(c => c.type === 'Earning').map(comp => (
-                                                    <div key={comp.id} className="bg-slate-50 hover:bg-white p-6 rounded-[2rem] border-2 border-slate-50 hover:border-blue-100 flex items-center justify-between transition-all group shadow-sm hover:shadow-xl hover:shadow-blue-500/5">
-                                                        <div className="space-y-1">
-                                                            <div className="flex items-center gap-2">
-                                                                <label className="text-sm font-black text-slate-800 uppercase tracking-tight group-hover:text-blue-600 transition-colors uppercase">{comp.name}</label>
-                                                            </div>
-                                                            {comp.is_taxable && <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest italic leading-none">Taxable component active</p>}
-                                                        </div>
-                                                        <div className="flex items-center gap-4">
-                                                            {comp.name.toLowerCase().includes('fuel') && (
-                                                                <div className="relative">
-                                                                    <span className="absolute left-4 top-1 text-[8px] font-black text-blue-400 uppercase tracking-widest">
-                                                                        Liters
-                                                                    </span>
-                                                                    <input
-                                                                        type="number"
-                                                                        placeholder="0"
-                                                                        disabled={empStructure[comp.id]?.is_locked || sourceMeta[comp.id] === 'override'}
-                                                                        className={`bg-white border-2 border-slate-100 rounded-2xl px-4 pt-5 pb-3 w-28 text-center font-black text-sm outline-none transition-all text-slate-800 ${empStructure[comp.id]?.is_locked || sourceMeta[comp.id] === 'override' ? 'cursor-not-allowed opacity-50' : 'focus:border-blue-500'}`}
-                                                                        value={empStructure[comp.id]?.quantity || ''}
-                                                                        onChange={(e) => handleQuantityChange(comp.id, e.target.value)}
-                                                                    />
-                                                                </div>
-                                                            )}
-                                                            <div className="relative">
-                                                                <span className="absolute left-6 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">LKR</span>
-                                                                <input
-                                                                    type="number"
-                                                                    placeholder="0.00"
-                                                                    disabled={empStructure[comp.id]?.is_locked || sourceMeta[comp.id] === 'override'}
-                                                                    className={`bg-white border-2 border-slate-100 rounded-2xl pl-16 pr-6 py-4 w-48 text-right font-black text-lg outline-none focus:shadow-2xl focus:shadow-blue-500/10 transition-all text-slate-800 ${empStructure[comp.id]?.is_locked || sourceMeta[comp.id] === 'override' ? 'cursor-not-allowed border-slate-50 bg-slate-50 opacity-60' : 'focus:border-blue-500'}`}
-                                                                    value={comp.name.toLowerCase().includes('fuel') ? (parseFloat(empStructure[comp.id]?.quantity || 0) * fuelPrice).toFixed(2) : (empStructure[comp.id]?.amount || '')}
-                                                                    onChange={(e) => handleStructureChange(comp.id, e.target.value)}
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-8">
-                                            <div className="flex items-center gap-4 border-b-2 border-slate-50 pb-6">
-                                                <div className="w-3 h-8 bg-rose-500 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.3)]"></div>
-                                                <h4 className="font-black text-slate-900 uppercase tracking-[0.2em] text-lg italic">Deductions</h4>
-                                            </div>
-                                            <div className="space-y-4">
-                                                {salaryComponents.filter(c => c.type === 'Deduction').map(comp => (
-                                                    <div key={comp.id} className={`bg-slate-50 hover:bg-white p-6 rounded-[2rem] border-2 border-slate-50 hover:border-rose-100 flex items-center justify-between transition-all group shadow-sm hover:shadow-xl hover:shadow-rose-500/5 ${empStructure[comp.id]?.is_locked ? 'opacity-80' : ''}`}>
-                                                        <div className="flex items-center gap-2">
-                                                            <label className="text-sm font-black text-slate-800 uppercase tracking-tight group-hover:text-rose-600 transition-colors uppercase">{comp.name}</label>
-                                                            {empStructure[comp.id]?.is_locked && (
-                                                                <Lock size={12} className="text-blue-400" />
-                                                            )}
-                                                            {sourceMeta[comp.id] === 'historical' && (
-                                                                <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded text-[8px] font-black uppercase tracking-widest border border-amber-100 animate-pulse">
-                                                                    HISTORICAL_VAL
-                                                                </span>
-                                                            )}
-                                                            {sourceMeta[comp.id] === 'override' && (
-                                                                <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[8px] font-black uppercase tracking-widest border border-blue-100 animate-pulse">
-                                                                    PERMANENT
-                                                                </span>
-                                                            )}
-                                                            {sourceMeta[comp.id] === 'monthly' && (
-                                                                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[8px] font-black uppercase tracking-widest border border-emerald-100 animate-bounce" title={empStructure[comp.id]?.lock_reason}>
-                                                                    MONTHLY_ONLY
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex items-center gap-4">
-                                                            {comp.name.toLowerCase().includes('loan') && (
-                                                                <div className="relative">
-                                                                    <span className="absolute left-4 top-1 text-[8px] font-black text-rose-400 uppercase tracking-widest">Installments</span>
-                                                                    <input
-                                                                        type="number"
-                                                                        placeholder="Months"
-                                                                        disabled={empStructure[comp.id]?.is_locked || sourceMeta[comp.id] === 'override'}
-                                                                        className={`bg-white border-2 border-slate-100 rounded-2xl px-4 pt-5 pb-3 w-28 text-center font-black text-sm outline-none transition-all text-slate-800 ${empStructure[comp.id]?.is_locked || sourceMeta[comp.id] === 'override' ? 'cursor-not-allowed opacity-50' : 'focus:border-rose-500'}`}
-                                                                        value={empStructure[comp.id]?.installments_remaining || ''}
-                                                                        onChange={(e) => handleInstallmentChange(comp.id, e.target.value)}
-                                                                    />
-                                                                </div>
-                                                            )}
-                                                            <div className="relative">
-                                                                <span className="absolute left-6 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">LKR</span>
-                                                                <input
-                                                                    type="number"
-                                                                    placeholder="0.00"
-                                                                    disabled={empStructure[comp.id]?.is_locked || sourceMeta[comp.id] === 'override'}
-                                                                    className={`bg-white border-2 border-slate-100 rounded-2xl pl-16 pr-6 py-4 w-48 text-right font-black text-lg outline-none focus:shadow-2xl focus:shadow-rose-500/10 transition-all text-slate-800 ${empStructure[comp.id]?.is_locked || sourceMeta[comp.id] === 'override' ? 'cursor-not-allowed border-slate-50 bg-slate-50 opacity-60' : 'focus:border-rose-500'}`}
-                                                                    value={empStructure[comp.id]?.amount || ''}
-                                                                    onChange={(e) => handleStructureChange(comp.id, e.target.value)}
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="pt-16 border-t-2 border-slate-50 flex justify-between items-center">
-                                        <div className="flex items-center gap-4 text-emerald-500 bg-emerald-50 p-6 rounded-3xl border border-emerald-100">
-                                            <Activity size={24} className="animate-pulse" />
-                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] max-w-xs leading-relaxed">System Verification: Real-time calculation engaged. Validity confirmed.</p>
-                                        </div>
-                                        <button
-                                            onClick={saveStructure}
-                                            className="group relative overflow-hidden bg-slate-900 text-white px-16 py-7 rounded-[2rem] font-black uppercase text-sm tracking-[0.4em] shadow-[0_40px_80px_-20px_rgba(79,70,229,0.4)] transition-all hover:scale-[1.05] active:scale-[0.95]"
-                                        >
-                                            <div className="relative z-10 flex items-center gap-4">
-                                                <Save size={24} strokeWidth={3} /> Save Master Structure
-                                            </div>
-                                            <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
-                                        </button>
-                                    </div>
+                        {baselineSyncStatus === 'Approved' && (
+                            <div className="mt-12 p-8 bg-emerald-50 border-2 border-emerald-100 rounded-[2.5rem] flex items-center gap-6 animate-in zoom-in duration-500">
+                                <div className="p-4 bg-white rounded-2xl shadow-lg text-emerald-600">
+                                    <ShieldAlert size={32} />
                                 </div>
-                            );
-                        })()}
+                                <div>
+                                    <h4 className="text-xl font-black text-emerald-900 tracking-tight">BASELINE FINALIZED</h4>
+                                    <p className="text-emerald-700/70 font-medium text-sm">
+                                        The Master Salary Baseline for this month is approved. The Payroll Engine has been unlocked.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
