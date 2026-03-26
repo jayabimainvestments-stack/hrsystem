@@ -134,21 +134,7 @@ const createPayroll = async (req, res) => {
         const catalogRes = await client.query("SELECT * FROM salary_components WHERE status = 'Active'");
         const catalog = catalogRes.rows;
 
-        // --- MANDATORY MASTER BASELINE APPROVAL GUARD ---
-        // Any payroll generation for Month X MUST have an 'Approved' MASTER_BASELINE_SYNC record.
-        // This ensures the two-stage "Maker-Checker" flow: Verify Baseline -> Finalize -> Generate Payroll.
-        const baselineSyncRes = await client.query(
-            "SELECT status FROM pending_changes WHERE entity = 'MASTER_BASELINE_SYNC' AND field_name = $1 AND status = 'Approved'",
-            [datePrefix]
-        );
 
-        if (baselineSyncRes.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(403).json({ 
-                message: `Payroll generation blocked: The Master Salary Baseline for ${month} ${processingYear} has not been approved in the Governance Hub. 
-                Please go to Master Salary Baseline -> Verify & Submit All, and ensure it is Approved before generating payroll.` 
-            });
-        }
 
         // Identify standard components from Catalog
         const findInCatalog = (keywords) => catalog.find(c => keywords.some(k => c.name.toLowerCase().includes(k.toLowerCase())));

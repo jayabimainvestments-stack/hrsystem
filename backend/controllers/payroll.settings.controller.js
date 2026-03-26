@@ -418,48 +418,19 @@ const getConsolidatedBaseline = async (req, res) => {
             LEFT JOIN users u ON e.user_id = u.id
             LEFT JOIN employee_salary_structure es ON e.id = es.employee_id
             LEFT JOIN salary_components sc ON es.component_id = sc.id
-            WHERE (e.employment_status ILIKE 'Active' OR e.employment_status IS NULL)
-            GROUP BY e.id, u.name, u.email, e.employee_id, e.designation
+            GROUP BY e.id, u.name, u.email, e.employee_id, e.designation, e.employment_status
             ORDER BY COALESCE(u.name, u.email)
         `);
         
-        // Also check for pending baseline sync for current month
-        const currentMonth = new Date().toISOString().slice(0, 7);
-        const syncStatus = await db.query(
-            "SELECT status FROM pending_changes WHERE entity = 'MASTER_BASELINE_SYNC' AND field_name = $1 ORDER BY created_at DESC LIMIT 1",
-            [currentMonth]
-        );
-
         res.status(200).json({
-            employees: result.rows,
-            syncStatus: syncStatus.rows[0]?.status || 'Draft'
+            employees: result.rows
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-const submitMasterBaseline = async (req, res) => {
-    const { month, reason } = req.body;
-    try {
-        const check = await db.query(
-            "SELECT id FROM pending_changes WHERE entity = 'MASTER_BASELINE_SYNC' AND field_name = $1 AND status = 'Pending'",
-            [month]
-        );
-        if (check.rows.length > 0) {
-            return res.status(400).json({ message: 'A baseline sync request is already pending for this month.' });
-        }
 
-        await db.query(
-            `INSERT INTO pending_changes (entity, field_name, new_value, requested_by, reason, status)
-             VALUES ($1, $2, $3, $4, $5, 'Pending')`,
-            ['MASTER_BASELINE_SYNC', month, 'FINALIZED', req.user.id, reason || `Master Baseline Sync for ${month}`, 'Pending']
-        );
-        res.status(200).json({ message: 'Master Baseline submitted for Governance approval.' });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
 
 module.exports = {
     getComponents,
@@ -478,6 +449,5 @@ module.exports = {
     bulkApproveOverrides,
     deleteMonthlyOverride,
     deleteAllMonthlyOverrides,
-    getConsolidatedBaseline,
-    submitMasterBaseline
+    getConsolidatedBaseline
 };

@@ -1,4 +1,4 @@
-// Deployment Marker: 2026-03-25-1245
+// Deployment Marker: 2026-03-25-1542-ForceRebuild
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 import { Settings, Plus, Trash2, Save, X, Info, Activity, AlertTriangle, ShieldAlert, Lock, Shield, Users } from 'lucide-react';
@@ -25,8 +25,6 @@ const PayrollSettings = () => {
     const [hrManagers, setHrManagers] = useState([]);
     const [fuelPrice, setFuelPrice] = useState(370);
     const [consolidatedBaseline, setConsolidatedBaseline] = useState([]);
-    const [baselineSyncStatus, setBaselineSyncStatus] = useState('Draft'); // Draft | Pending | Approved
-    const [monthYear, setMonthYear] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
 
 
     const { user } = useAuth();
@@ -72,7 +70,6 @@ const PayrollSettings = () => {
         try {
             const { data } = await api.get('/payroll-settings/consolidated');
             setConsolidatedBaseline(data.employees || []);
-            setBaselineSyncStatus(data.syncStatus || 'Draft');
         } catch (error) {
             console.error("Error fetching consolidated baseline", error);
         } finally {
@@ -259,21 +256,7 @@ const PayrollSettings = () => {
         }
     };
 
-    const handleSubmitBaseline = async () => {
-        const reason = window.prompt(`Submit Master Salary Baseline for ${monthYear} for Governance Approval? \nReason (Required):`);
-        if (!reason) return;
 
-        try {
-            await api.post('/payroll-settings/submit-baseline', {
-                month: monthYear,
-                reason
-            });
-            alert('Master Baseline submitted for verification! Check Governance → Pending Actions.');
-            fetchConsolidatedBaseline();
-        } catch (error) {
-            alert(error.response?.data?.message || 'Submission failed');
-        }
-    };
 
     const handleResetStructure = async () => {
         const confirm1 = window.confirm("WARNING: This will DELETE ALL employee salary structures. This cannot be undone.");
@@ -556,46 +539,12 @@ const PayrollSettings = () => {
                         <div className="flex flex-col lg:flex-row justify-between items-start gap-12 mb-16">
                             <div className="max-w-2xl space-y-6">
                                 <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tighter leading-none">
-                                    Master Salary <span className="text-blue-600 italic underline decoration-blue-100 underline-offset-8">Baseline</span>
+                                    Salary <span className="text-blue-600 italic underline decoration-blue-100 underline-offset-8">Structure</span>
                                 </h2>
                                 <p className="text-slate-500 font-medium text-lg leading-relaxed">
-                                    Organization-wide verification hub. Review all permanent salary structures for the current month and finalize for payroll processing.
+                                    Organization-wide configuration. Review all permanent salary structures for the current month.
                                 </p>
-
-                                <div className="flex flex-wrap gap-4">
-                                    <div className={`inline-flex items-center gap-3 px-6 py-3 rounded-2xl border transition-all ${
-                                        baselineSyncStatus === 'Approved' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
-                                        baselineSyncStatus === 'Pending' ? 'bg-amber-50 border-amber-100 text-amber-600' :
-                                        'bg-blue-50 border-blue-100 text-blue-600'
-                                    }`}>
-                                        <div className={`w-2 h-2 rounded-full ${baselineSyncStatus === 'Approved' ? 'bg-emerald-500' : baselineSyncStatus === 'Pending' ? 'bg-amber-500 animate-pulse' : 'bg-blue-500'}`}></div>
-                                        <span className="text-[10px] font-black uppercase tracking-[0.2em]">{baselineSyncStatus === 'Draft' ? 'Review Phase' : baselineSyncStatus} Baseline</span>
-                                    </div>
-                                    <div className="inline-flex items-center gap-3 px-6 py-3 bg-slate-900 text-slate-400 rounded-2xl border border-slate-800">
-                                        <span className="text-[10px] font-black uppercase tracking-[0.2em]">Target:</span>
-                                        <span className="text-xs font-black text-white">{new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
-                                    </div>
-                                </div>
                             </div>
-
-                            <button
-                                onClick={handleSubmitBaseline}
-                                disabled={baselineSyncStatus === 'Pending' || baselineSyncStatus === 'Approved'}
-                                className={`group relative overflow-hidden px-12 py-7 rounded-[2.5rem] font-black uppercase text-xs tracking-[0.3em] transition-all hover:scale-[1.05] active:scale-[0.95] shadow-2xl ${
-                                    baselineSyncStatus === 'Approved' ? 'bg-emerald-600 text-white cursor-default' :
-                                    baselineSyncStatus === 'Pending' ? 'bg-amber-100 text-amber-600 cursor-not-allowed' :
-                                    'bg-slate-900 text-white shadow-blue-500/20'
-                                }`}
-                            >
-                                <div className="relative z-10 flex items-center gap-4">
-                                    {baselineSyncStatus === 'Approved' ? (
-                                        <><Shield size={20} /> FINALIZED</>
-                                    ) : (
-                                        <><Save size={20} className={baselineSyncStatus === 'Draft' ? 'animate-bounce' : ''} /> Verify & Submit All</>
-                                    )}
-                                </div>
-                                {baselineSyncStatus === 'Draft' && <div className="absolute inset-x-0 bottom-0 h-1 bg-blue-500 animate-pulse"></div>}
-                            </button>
                         </div>
 
                         <div className="bg-slate-50 rounded-[3rem] border border-slate-100 overflow-hidden shadow-inner min-h-[400px]">
@@ -657,19 +606,7 @@ const PayrollSettings = () => {
                             </div>
                         </div>
 
-                        {baselineSyncStatus === 'Approved' && (
-                            <div className="mt-12 p-8 bg-emerald-50 border-2 border-emerald-100 rounded-[2.5rem] flex items-center gap-6 animate-in zoom-in duration-500">
-                                <div className="p-4 bg-white rounded-2xl shadow-lg text-emerald-600">
-                                    <ShieldAlert size={32} />
-                                </div>
-                                <div>
-                                    <h4 className="text-xl font-black text-emerald-900 tracking-tight">BASELINE FINALIZED</h4>
-                                    <p className="text-emerald-700/70 font-medium text-sm">
-                                        The Master Salary Baseline for this month is approved. The Payroll Engine has been unlocked.
-                                    </p>
-                                </div>
-                            </div>
-                        )}
+
                     </div>
                 )}
 
