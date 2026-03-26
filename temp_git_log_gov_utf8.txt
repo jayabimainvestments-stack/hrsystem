@@ -1,0 +1,137 @@
+﻿commit 802d7966abb30dbadf677463c0f41eae7d034bfc
+Author: Jayabima Investments <jayabimainvestments@gmail.com>
+Date:   Wed Mar 25 12:32:47 2026 +0530
+
+    feat: redesign payroll governance hub
+
+diff --git a/backend/controllers/governance.controller.js b/backend/controllers/governance.controller.js
+index 7189b1b..b8c8121 100644
+--- a/backend/controllers/governance.controller.js
++++ b/backend/controllers/governance.controller.js
+@@ -16,7 +16,8 @@ const getPendingChanges = async (req, res) => {
+                      WHEN p.entity = 'employee_bank_details' THEN 'BANK'
+                      ELSE 'SALARY' 
+                    END as type,
+-                   COALESCE(tu.name, bank_u.name, att_u.name, fallback_u.name) as target_name
++                    COALESCE(tu.name, bank_u.name, att_u.name, fallback_u.name, 
++                            CASE WHEN p.entity = 'MASTER_BASELINE_SYNC' THEN 'ORGANIZATION-WIDE' ELSE NULL END) as target_name
+             FROM pending_changes p
+             LEFT JOIN users u ON p.requested_by = u.id
+             
+@@ -207,6 +208,17 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
+             const change = changeRes.rows[0];
+ 
+             if (action === 'Approve') {
++                if (change.entity === 'MASTER_BASELINE_SYNC') {
++                    // This is a virtual marker for the whole month. 
++                    // No data needs moving, we just update the status of this change to 'Approved'
++                    await client.query(
++                        'UPDATE pending_changes SET status = $1, approved_by = $2, updated_at = NOW() WHERE id = $3',
++                        [status, req.user.id, id]
++                    );
++                    await client.query('COMMIT');
++                    return res.status(200).json({ message: `Master Baseline for ${change.field_name} approved and finalized.` });
++                }
++
+                 if (change.field_name === 'MULTIPLE_COMPONENTS') {
+                     const updates = JSON.parse(change.new_value);
+                     for (const update of updates) {
+
+commit 8f9cda4903bfb81100a561c7b900a1d247f2a578
+Author: Jayabima Investments <jayabimainvestments@gmail.com>
+Date:   Wed Mar 25 11:00:15 2026 +0530
+
+    Fix: Salary Baseline -> Governance Approval pipeline. Ensure changed components are queued in pending_changes for Maker-Checker approval before Payroll generation.
+
+diff --git a/backend/controllers/governance.controller.js b/backend/controllers/governance.controller.js
+index 504020f..7189b1b 100644
+--- a/backend/controllers/governance.controller.js
++++ b/backend/controllers/governance.controller.js
+@@ -16,12 +16,12 @@ const getPendingChanges = async (req, res) => {
+                      WHEN p.entity = 'employee_bank_details' THEN 'BANK'
+                      ELSE 'SALARY' 
+                    END as type,
+-                   COALESCE(tu.name, bank_u.name, att_u.name, emp_direct.name) as target_name
++                   COALESCE(tu.name, bank_u.name, att_u.name, fallback_u.name) as target_name
+             FROM pending_changes p
+             LEFT JOIN users u ON p.requested_by = u.id
+             
+-            -- 1. Link to target employee (Salary/General/Structure) - entity_id is employee_id
+-            LEFT JOIN employees te ON (p.entity IN ('employee_salary_structure', 'salary_structures', 'employees')) 
++            -- 1. Link to target employee (Salary/General/Structure) - entity_id is employee_id OR user_id
++            LEFT JOIN employees te ON (p.entity IN ('employee_salary_structure', 'salary_structures', 'employees', 'financial_requests')) 
+                                    AND te.id::text = p.entity_id
+             LEFT JOIN users tu ON te.user_id = tu.id
+             
+@@ -34,11 +34,10 @@ const getPendingChanges = async (req, res) => {
+             LEFT JOIN employees att_e ON att.employee_id = att_e.id
+             LEFT JOIN users att_u ON att_e.user_id = att_u.id
+             
+-            -- 4. Fallback: numeric entity_id -> direct employee link
+-            LEFT JOIN employees e_dir ON (p.entity NOT IN ('attendance', 'financial_requests')) 
+-                                     AND p.entity_id ~ '^[0-9]+$'
+-                                     AND e_dir.id::text = p.entity_id
+-            LEFT JOIN users emp_direct ON e_dir.user_id = emp_direct.id
++            -- 4. Fallback: if it's a numeric ID but not caught above
++            LEFT JOIN users fallback_u ON (tu.id IS NULL AND bank_u.id IS NULL AND att_u.id IS NULL)
++                                      AND p.entity_id ~ '^[0-9]+$'
++                                      AND fallback_u.id::text = p.entity_id
+             
+             WHERE p.status = 'Pending'
+         `);
+
+commit 186e2c1dfc7f50c266e096f149b0fe2524ff5c00
+Author: Jayabima Investments <jayabimainvestments@gmail.com>
+Date:   Sun Mar 22 16:25:13 2026 +0530
+
+    Fix governance, timeout, and profile updates
+
+diff --git a/backend/controllers/governance.controller.js b/backend/controllers/governance.controller.js
+index 2be9ffb..504020f 100644
+--- a/backend/controllers/governance.controller.js
++++ b/backend/controllers/governance.controller.js
+@@ -12,6 +12,8 @@ const getPendingChanges = async (req, res) => {
+             SELECT p.*, u.name as requester_name, 
+                    CASE 
+                      WHEN p.entity = 'attendance' THEN 'ATTENDANCE' 
++                     WHEN p.entity = 'employees' OR p.entity = 'users' THEN 'PROFILE'
++                     WHEN p.entity = 'employee_bank_details' THEN 'BANK'
+                      ELSE 'SALARY' 
+                    END as type,
+                    COALESCE(tu.name, bank_u.name, att_u.name, emp_direct.name) as target_name
+@@ -200,7 +202,7 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
+             throw new Error('Segregation of duties: You cannot approve/reject your own request.');
+         }
+ 
+-        if (type === 'SALARY') {
++        if (type === 'SALARY' || type === 'PROFILE' || type === 'BANK') {
+             const changeRes = await client.query('SELECT * FROM pending_changes WHERE id = $1', [id]);
+             if (changeRes.rows.length === 0) throw new Error('Request not found');
+             const change = changeRes.rows[0];
+@@ -247,10 +249,10 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
+                             [change.entity_id, componentId, amount]
+                         );
+                     }
+-                } else if (change.entity === 'salary_structures') {
+-                    // Legacy structure update
++                } else if (change.entity === 'salary_structures' || change.entity === 'employee_salary_structure') {
++                    // Salary structure update
+                     await client.query(
+-                        `UPDATE salary_structures SET ${change.field_name} = $1 WHERE employee_id = $2`,
++                        `UPDATE employee_salary_structure SET ${change.field_name} = $1 WHERE employee_id = $2`,
+                         [change.new_value, change.entity_id]
+                     );
+                 } else if (change.entity === 'employees') {
+@@ -259,6 +261,12 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
+                         `UPDATE employees SET ${change.field_name} = $1 WHERE id = $2`,
+                         [change.new_value, change.entity_id]
+                     );
++                } else if (change.entity === 'users') {
++                    // User record update (e.g. name, email)
++                    await client.query(
++                        `UPDATE users SET ${change.field_name} = $1 WHERE id = $2`,
++                        [change.new_value, change.entity_id]
++                    );
+                 } else if (change.entity === 'employee_bank_details') {
+                     // Bank details update
+                     await client.query(

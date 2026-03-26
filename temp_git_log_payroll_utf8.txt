@@ -1,0 +1,268 @@
+﻿commit 802d7966abb30dbadf677463c0f41eae7d034bfc
+Author: Jayabima Investments <jayabimainvestments@gmail.com>
+Date:   Wed Mar 25 12:32:47 2026 +0530
+
+    feat: redesign payroll governance hub
+
+diff --git a/backend/controllers/payroll.controller.js b/backend/controllers/payroll.controller.js
+index 0dee000..24cdb4a 100644
+--- a/backend/controllers/payroll.controller.js
++++ b/backend/controllers/payroll.controller.js
+@@ -134,6 +134,22 @@ const createPayroll = async (req, res) => {
+         const catalogRes = await client.query("SELECT * FROM salary_components WHERE status = 'Active'");
+         const catalog = catalogRes.rows;
+ 
++        // --- MANDATORY MASTER BASELINE APPROVAL GUARD ---
++        // Any payroll generation for Month X MUST have an 'Approved' MASTER_BASELINE_SYNC record.
++        // This ensures the two-stage "Maker-Checker" flow: Verify Baseline -> Finalize -> Generate Payroll.
++        const baselineSyncRes = await client.query(
++            "SELECT status FROM pending_changes WHERE entity = 'MASTER_BASELINE_SYNC' AND field_name = $1 AND status = 'Approved'",
++            [datePrefix]
++        );
++
++        if (baselineSyncRes.rows.length === 0) {
++            await client.query('ROLLBACK');
++            return res.status(403).json({ 
++                message: `Payroll generation blocked: The Master Salary Baseline for ${month} ${processingYear} has not been approved in the Governance Hub. 
++                Please go to Master Salary Baseline -> Verify & Submit All, and ensure it is Approved before generating payroll.` 
++            });
++        }
++
+         // Identify standard components from Catalog
+         const findInCatalog = (keywords) => catalog.find(c => keywords.some(k => c.name.toLowerCase().includes(k.toLowerCase())));
+         const compBasic = findInCatalog(['basic pay', 'basic salary']);
+@@ -1415,7 +1431,7 @@ const getPayrollReadiness = async (req, res) => {
+         const attendanceRes = await db.query(`
+             SELECT 
+                 COUNT(*) as total,
+-                COUNT(*) FILTER (WHERE status IN ('Processed', 'Ignored')) as handled
++                COUNT(*) FILTER (WHERE status IN ('Processed', 'Ignored') OR total_amount = 0) as handled
+             FROM attendance_deductions
+             WHERE month = $1
+         `, [datePrefix]);
+@@ -1448,17 +1464,17 @@ const getPayrollReadiness = async (req, res) => {
+                 COUNT(*) FILTER (WHERE mo.status = 'Approved') as approved
+             FROM monthly_salary_overrides mo
+             JOIN salary_components sc ON mo.component_id = sc.id
+-            WHERE mo.month = $1 AND LOWER(sc.name) LIKE '%advance%'
++            WHERE mo.month = $1 AND LOWER(sc.name) LIKE '%advance%' AND mo.amount > 0
+         `, [datePrefix]);
+         const advanceStatus = {
+             total: parseInt(advanceRes.rows[0].total),
+             approved: parseInt(advanceRes.rows[0].approved)
+         };
+ 
+-        // 7. General Overrides (Anything else in Draft)
++        // 7. General Overrides (Anything else in Draft with non-zero amount)
+         const draftOverridesRes = await db.query(`
+             SELECT COUNT(*) FROM monthly_salary_overrides 
+-            WHERE month = $1 AND status = 'Draft'
++            WHERE month = $1 AND status = 'Draft' AND amount > 0
+             AND component_id NOT IN (
+                 SELECT id FROM salary_components WHERE LOWER(name) LIKE '%fuel%' OR LOWER(name) LIKE '%advance%' OR LOWER(name) LIKE '%performance%'
+             )
+
+commit 8f9cda4903bfb81100a561c7b900a1d247f2a578
+Author: Jayabima Investments <jayabimainvestments@gmail.com>
+Date:   Wed Mar 25 11:00:15 2026 +0530
+
+    Fix: Salary Baseline -> Governance Approval pipeline. Ensure changed components are queued in pending_changes for Maker-Checker approval before Payroll generation.
+
+diff --git a/backend/controllers/payroll.controller.js b/backend/controllers/payroll.controller.js
+index e9b2738..0dee000 100644
+--- a/backend/controllers/payroll.controller.js
++++ b/backend/controllers/payroll.controller.js
+@@ -66,15 +66,16 @@ const calculateSplitFuelAllowance = async (client, totalLiters, startDate, endDa
+         let priceSegments = {}; // { price: days }
+         let dailyBreakdown = [];
+ 
+-        // 3. Calculate daily amount based on price history
++        // 3. Pre-fetch all fuel prices to avoid N+1 DB queries per day
++        const priceCacheRes = await client.query('SELECT effective_from_date, price_per_liter FROM fuel_price_history ORDER BY effective_from_date DESC');
++        const priceHistory = priceCacheRes.rows.map(r => ({ date: new Date(r.effective_from_date), price: parseFloat(r.price_per_liter) }));
++
++        // 4. Calculate daily amount based on cached price history
+         for (const date of workingDays) {
+-            const priceRes = await client.query(`
+-                SELECT price_per_liter FROM fuel_price_history 
+-                WHERE effective_from_date <= $1 
+-                ORDER BY effective_from_date DESC LIMIT 1
+-            `, [date]);
++            const currentDate = new Date(date);
++            const applicable = priceHistory.find(h => h.date <= currentDate);
+             
+-            const price = priceRes.rows.length > 0 ? parseFloat(priceRes.rows[0].price_per_liter) : 0;
++            const price = applicable ? applicable.price : 0;
+             const amount = dailyQuota * price;
+             totalAmount += amount;
+             
+@@ -176,12 +177,19 @@ const createPayroll = async (req, res) => {
+         }
+ 
+         // Upsert each baseline component into monthly_salary_overrides (only if not already overridden)
+-        for (const comp of baselineRes.rows) {
++        if (baselineRes.rows.length > 0) {
++            const values = [];
++            const flatValues = [];
++            let p_index = 1;
++            for (const comp of baselineRes.rows) {
++                values.push(`($${p_index++}, $${p_index++}, $${p_index++}, $${p_index++}, $${p_index++}, 'Approved', 'Auto-snapshot from Master Baseline')`);
++                flatValues.push(employee.id, datePrefix, comp.component_id, comp.amount, comp.quantity);
++            }
+             await client.query(`
+                 INSERT INTO monthly_salary_overrides (employee_id, month, component_id, amount, quantity, status, reason)
+-                VALUES ($1, $2, $3, $4, $5, 'Approved', 'Auto-snapshot from Master Baseline')
++                VALUES ${values.join(', ')}
+                 ON CONFLICT (employee_id, month, component_id) DO NOTHING
+-            `, [employee.id, datePrefix, comp.component_id, comp.amount, comp.quantity]);
++            `, flatValues);
+         }
+ 
+         // RULE 1+2: Now fetch all Approved components for this month
+@@ -445,55 +453,67 @@ const createPayroll = async (req, res) => {
+         );
+         const payrollId = payrollRes.rows[0].id;
+ 
+-        for (const item of breakdown) {
+-            await client.query(
+-                `INSERT INTO payroll_details (payroll_id, component_name, amount, type, details) VALUES ($1, $2, $3, $4, $5)`,
+-                [payrollId, item.name, item.amount, item.type, item.details]
+-            );
++        if (breakdown.length > 0) {
++            const values = [];
++            const flatValues = [];
++            let p_index = 1;
++            for (const item of breakdown) {
++                values.push(`($${p_index++}, $${p_index++}, $${p_index++}, $${p_index++}, $${p_index++})`);
++                flatValues.push(payrollId, item.name, item.amount, item.type, item.details);
++            }
++            await client.query(`
++                INSERT INTO payroll_details (payroll_id, component_name, amount, type, details) 
++                VALUES ${values.join(', ')}
++            `, flatValues);
+         }
+ 
+         // --- 7.1 Post-Processing: Decrement Loan Installments ONLY if applied ---
++        const structurePromises = [];
+         for (const comp of components) {
+             if (comp.name.toLowerCase().includes('loan') && comp.installments_remaining > 0 && appliedComponentIds.has(comp.component_id)) {
+-                await client.query(`
++                structurePromises.push(client.query(`
+                     UPDATE employee_salary_structure 
+                     SET installments_remaining = installments_remaining - 1 
+                     WHERE employee_id = $1 AND component_id = $2
+-                `, [employee.id, comp.component_id]);
++                `, [employee.id, comp.component_id]));
+             }
+         }
++        if (structurePromises.length > 0) await Promise.all(structurePromises);
+ 
+         // New Loan Tracker Post-Processing
++        const loanInstPromises = [];
+         const loanInstallments = breakdown.filter(i => i.loan_id);
+         for (const inst of loanInstallments) {
+-            await client.query(`
++            loanInstPromises.push(client.query(`
+                 UPDATE employee_loans 
+                 SET installments_paid = installments_paid + 1,
+                     status = CASE WHEN (installments_paid + 1) >= num_installments THEN 'Completed' ELSE status END,
+                     updated_at = NOW()
+                 WHERE id = $1
+-            `, [inst.loan_id]);
++            `, [inst.loan_id]));
+ 
+             // Log into loan_payments for history tracking
+-            await client.query(`
++            loanInstPromises.push(client.query(`
+                 INSERT INTO loan_payments (loan_id, payment_date, amount, type, month, note, created_by)
+                 VALUES ($1, CURRENT_DATE, $2, 'payroll', $3, $4, $5)
+-            `, [inst.loan_id, inst.amount, datePrefix, `Payroll deduction for ${month} ${processingYear}`, req.user.id]);
++            `, [inst.loan_id, inst.amount, datePrefix, `Payroll deduction for ${month} ${processingYear}`, req.user.id]));
+         }
++        if (loanInstPromises.length > 0) await Promise.all(loanInstPromises);
+ 
+         // 8. Update Liabilities & Audit Log
+-        await updateLiability(client, datePrefix, 'EPF 8%', epf_employee);
+-        await updateLiability(client, datePrefix, 'EPF 12%', epf_employer);
+-        await updateLiability(client, datePrefix, 'ETF 3%', etf_employer);
+-        if (incomeTax > 0) await updateLiability(client, datePrefix, 'PAYE Tax', incomeTax);
++        const liabilityPromises = [];
++        liabilityPromises.push(updateLiability(client, datePrefix, 'EPF 8%', epf_employee));
++        liabilityPromises.push(updateLiability(client, datePrefix, 'EPF 12%', epf_employer));
++        liabilityPromises.push(updateLiability(client, datePrefix, 'ETF 3%', etf_employer));
++        if (incomeTax > 0) liabilityPromises.push(updateLiability(client, datePrefix, 'PAYE Tax', incomeTax));
+         if (welfareAmount > 0) {
+-            await updateLiability(client, datePrefix, 'Welfare 2%', welfareAmount);
+-            // Record in Welfare Ledger
+-            await client.query(`
++            liabilityPromises.push(updateLiability(client, datePrefix, 'Welfare 2%', welfareAmount));
++            liabilityPromises.push(client.query(`
+                 INSERT INTO welfare_ledger (transaction_date, type, amount, description, ref_id)
+                 VALUES (CURRENT_DATE, 'Collection', $1, $2, $3)
+-            `, [welfareAmount, `Welfare collection for ${employee.name} (${datePrefix})`, payrollId]);
++            `, [welfareAmount, `Welfare collection for ${employee.name} (${datePrefix})`, payrollId]));
+         }
++        await Promise.all(liabilityPromises);
+ 
+         // Enterprise Audit Log
+         await client.query(`
+
+commit 40387e141a9d2c36b6af6c25887f04aa5c520e0a
+Author: Jayabima Investments <jayabimainvestments@gmail.com>
+Date:   Mon Mar 23 12:17:26 2026 +0530
+
+    Implement day-by-day fuel breakdown view
+
+diff --git a/backend/controllers/payroll.controller.js b/backend/controllers/payroll.controller.js
+index d707c5f..e9b2738 100644
+--- a/backend/controllers/payroll.controller.js
++++ b/backend/controllers/payroll.controller.js
+@@ -59,11 +59,12 @@ const calculateSplitFuelAllowance = async (client, totalLiters, startDate, endDa
+         const holidays = new Set(holidayRes.rows.map(h => h.date.split(' ')[0]));
+         workingDays = workingDays.filter(d => !holidays.has(d));
+ 
+-        if (workingDays.length === 0) return { totalAmount: 0, reason: "No working days in period" };
++        if (workingDays.length === 0) return { totalAmount: 0, reason: "No working days in period", dailyBreakdown: [] };
+ 
+         const dailyQuota = totalLiters / workingDays.length;
+         let totalAmount = 0;
+         let priceSegments = {}; // { price: days }
++        let dailyBreakdown = [];
+ 
+         // 3. Calculate daily amount based on price history
+         for (const date of workingDays) {
+@@ -74,9 +75,16 @@ const calculateSplitFuelAllowance = async (client, totalLiters, startDate, endDa
+             `, [date]);
+             
+             const price = priceRes.rows.length > 0 ? parseFloat(priceRes.rows[0].price_per_liter) : 0;
+-            totalAmount += dailyQuota * price;
++            const amount = dailyQuota * price;
++            totalAmount += amount;
+             
+             priceSegments[price] = (priceSegments[price] || 0) + 1;
++            dailyBreakdown.push({
++                date,
++                price,
++                liters: Math.round(dailyQuota * 100) / 100,
++                amount: Math.round(amount * 100) / 100
++            });
+         }
+ 
+         // 4. Build Reason string
+@@ -86,10 +94,14 @@ const calculateSplitFuelAllowance = async (client, totalLiters, startDate, endDa
+         
+         const finalReason = `Split: ${workingDays.length} working days. [${breakdownStr}]`;
+         
+-        return { totalAmount: Math.round(totalAmount * 100) / 100, reason: finalReason };
++        return { 
++            totalAmount: Math.round(totalAmount * 100) / 100, 
++            reason: finalReason,
++            dailyBreakdown
++        };
+     } catch (e) {
+         console.error("[FUEL_CALC_ERROR]", e);
+-        return { totalAmount: 0, reason: "Error in split calculation" };
++        return { totalAmount: 0, reason: "Error in split calculation", dailyBreakdown: [] };
+     }
+ };
+ 

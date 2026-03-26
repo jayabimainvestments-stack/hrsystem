@@ -413,6 +413,7 @@ const createPayroll = async (req, res) => {
 
         const total_deductions = total_statutory + total_deductions_val;
         const net_salary = totalEarnings - total_deductions;
+        console.log(`[MATH TRACE] totalEarnings: ${totalEarnings}, total_statutory: ${total_statutory}, total_deductions_val: ${total_deductions_val}, total_deductions: ${total_deductions}, net_salary: ${net_salary}`);
 
         // 7. Save Payroll
         const payrollRes = await client.query(

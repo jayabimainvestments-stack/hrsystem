@@ -1,0 +1,117 @@
+﻿commit ee77cc21693fa3bb5692e327d48749c90bb1246f
+Author: Jayabima Investments <jayabimainvestments@gmail.com>
+Date:   Thu Mar 5 13:13:18 2026 +0530
+
+    Updated configuration for cloud deployment
+
+diff --git a/backend/controllers/salary.controller.js b/backend/controllers/salary.controller.js
+new file mode 100644
+index 0000000..cf75898
+--- /dev/null
++++ b/backend/controllers/salary.controller.js
+@@ -0,0 +1,105 @@
++const db = require('../config/db');
++
++// @desc    Get salary structure for an employee
++// @route   GET /api/salary/:employeeId
++// @access  Private (Admin/HR/Finance)
++const getSalaryStructure = async (req, res) => {
++    try {
++        const salaryRes = await db.query('SELECT * FROM salary_structures WHERE employee_id = $1', [req.params.employeeId]);
++
++        // Fetch components from standardized structure
++        const componentsRes = await db.query(`
++            SELECT es.amount, sc.id as component_id, sc.name, sc.type 
++            FROM employee_salary_structure es
++            JOIN salary_components sc ON es.component_id = sc.id
++            WHERE es.employee_id = $1
++        `, [req.params.employeeId]);
++
++        res.status(200).json({
++            legacy: salaryRes.rows.length > 0 ? salaryRes.rows[0] : null,
++            components: componentsRes.rows
++        });
++    } catch (error) {
++        res.status(500).json({ message: error.message });
++    }
++};
++
++// @desc    Request salary structure update (Dual-Control)
++// @route   PUT /api/salary/:employeeId
++// @access  Private (Admin/HR)
++const updateSalaryStructure = async (req, res) => {
++    const {
++        basic_salary, fixed_allowance, conveyance_allowance, housing_allowance,
++        other_allowances, epf_eligible, etf_eligible, reason,
++        components // Array of { component_id, amount }
++    } = req.body;
++    const employeeId = req.params.employeeId;
++
++    try {
++        await db.query('BEGIN');
++
++        // 1. Handle Legacy Fields (salary_structures)
++        const currentRes = await db.query('SELECT * FROM salary_structures WHERE employee_id = $1', [employeeId]);
++        let current = currentRes.rows.length > 0 ? currentRes.rows[0] : {
++            basic_salary: 0, fixed_allowance: 0, conveyance_allowance: 0, housing_allowance: 0,
++            other_allowances: 0, epf_eligible: true, etf_eligible: true
++        };
++
++        const legacyFields = [
++            'basic_salary', 'fixed_allowance', 'conveyance_allowance', 'housing_allowance',
++            'other_allowances', 'epf_eligible', 'etf_eligible'
++        ];
++
++        let pendingCount = 0;
++        const requestReason = reason || 'Salary revision';
++
++        for (const field of legacyFields) {
++            if (req.body[field] !== undefined && String(req.body[field]) !== String(current[field])) {
++                await db.query(
++                    `INSERT INTO pending_changes (entity, entity_id, field_name, old_value, new_value, requested_by, reason)
++                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
++                    ['salary_structures', employeeId, field, current[field], req.body[field], req.user.id, requestReason]
++                );
++                pendingCount++;
++            }
++        }
++
++        if (currentRes.rows.length === 0 && pendingCount > 0) {
++            await db.query('INSERT INTO salary_structures (employee_id) VALUES ($1)', [employeeId]);
++        }
++
++        // 2. Handle Standardized Components (employee_salary_structure)
++        if (components && Array.isArray(components)) {
++            // Fetch current components to compare
++            const currentCompRes = await db.query('SELECT * FROM employee_salary_structure WHERE employee_id = $1', [employeeId]);
++            const currentComps = currentCompRes.rows;
++
++            for (const newComp of components) {
++                const oldComp = currentComps.find(c => c.component_id === newComp.component_id);
++                const oldAmount = oldComp ? oldComp.amount : 0;
++
++                if (parseFloat(newComp.amount) !== parseFloat(oldAmount)) {
++                    await db.query(
++                        `INSERT INTO pending_changes (entity, entity_id, field_name, old_value, new_value, requested_by, reason)
++                         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
++                        ['employee_salary_structure', employeeId, `COMPONENT_${newComp.component_id}`, oldAmount, newComp.amount, req.user.id, requestReason]
++                    );
++                    pendingCount++;
++                }
++            }
++        }
++
++        await db.query('COMMIT');
++        res.status(200).json({
++            message: pendingCount > 0 ? `${pendingCount} salary changes pending Finance approval.` : 'No changes detected.',
++            pending_changes: pendingCount
++        });
++
++    } catch (error) {
++        await db.query('ROLLBACK');
++        console.error(error);
++        res.status(400).json({ message: error.message });
++    }
++};
++
++module.exports = { getSalaryStructure, updateSalaryStructure };

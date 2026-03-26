@@ -1,6 +1,6 @@
 const db = require('../config/db');
-const bcrypt = require('bcryptjs');
-
+const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 // @desc    Get all employees
 // @route   GET /api/employees
 // @access  Private (Admin/HR)
