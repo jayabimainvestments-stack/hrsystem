@@ -51,20 +51,34 @@ const registerUser = async (req, res) => {
 // @access  Public
 const loginUser = async (req, res) => {
     const { email, password } = req.body;
+    console.log(`[AUTH] Login attempt for: ${email}`);
+    console.time('login_total');
 
     try {
-        // Case-insensitive email search
+        // Case-insensitive email search - Optimized to use direct equality if possible, though ILIKE is safer for now
+        console.time('db_query');
         const userRes = await db.query('SELECT * FROM users WHERE email ILIKE $1', [email]);
-        if (userRes.rows.length === 0) return res.status(400).json({ message: 'Invalid credentials' });
+        console.timeEnd('db_query');
+
+        if (userRes.rows.length === 0) {
+            console.timeEnd('login_total');
+            return res.status(400).json({ message: 'Invalid credentials' });
+        }
 
         const user = userRes.rows[0];
 
-        if (await bcrypt.compare(password, user.password)) {
+        console.time('bcrypt_compare');
+        const isMatch = await bcrypt.compare(password, user.password);
+        console.timeEnd('bcrypt_compare');
+
+        if (isMatch) {
             // Check if account is activated
             if (user.activation_token && !user.force_password_change) {
+                console.timeEnd('login_total');
                 return res.status(401).json({ message: 'Account not activated. Please use the link sent to your email.' });
             }
 
+            console.timeEnd('login_total');
             res.json({
                 id: user.id,
                 name: user.name,
@@ -75,9 +89,12 @@ const loginUser = async (req, res) => {
                 profile_picture: user.profile_picture
             });
         } else {
+            console.timeEnd('login_total');
             res.status(400).json({ message: 'Invalid credentials' });
         }
     } catch (error) {
+        console.error('[AUTH ERROR]', error);
+        console.timeEnd('login_total');
         res.status(400).json({ message: error.message });
     }
 };

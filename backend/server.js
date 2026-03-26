@@ -157,10 +157,6 @@ cron.schedule('0 2 * * *', async () => {
 app.listen(PORT, () => {
     console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
     
-    // Run scraper once on startup, AFTER server is listening
-    if (scrapeFuelPrice) {
-        scrapeFuelPrice().catch(err => console.error('[STARTUP] Initial fuel scrape failed:', err));
-    } else {
-        console.warn('[STARTUP] Fuel scraper skipped: Service not loaded.');
-    }
+    // Scraper is handled by cron job only to prevent startup delay
+    console.log('[STARTUP] Fuel scraper scheduled via cron only.');
 });
