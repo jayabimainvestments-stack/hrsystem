@@ -163,43 +163,12 @@ const createPayroll = async (req, res) => {
         }
         const employee = empRes.rows[0];
 
-        // RULE 3: Auto-snapshot from employee_salary_structure → monthly_salary_overrides
-        // This replaces the manual "Snapshot Baseline" button — it happens automatically
-        const baselineRes = await client.query(`
-            SELECT component_id, amount, quantity
-            FROM employee_salary_structure
-            WHERE employee_id = $1
-        `, [employee.id]);
-
-        if (baselineRes.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({
-                message: `No permanent salary structure found for this employee. Please set up their Salary Structure in Manual Deductions & Allowances first.`
-            });
-        }
-
-        // Upsert each baseline component into monthly_salary_overrides (only if not already overridden)
-        if (baselineRes.rows.length > 0) {
-            const values = [];
-            const flatValues = [];
-            let p_index = 1;
-            for (const comp of baselineRes.rows) {
-                values.push(`($${p_index++}, $${p_index++}, $${p_index++}, $${p_index++}, $${p_index++}, 'Approved', 'Auto-snapshot from Master Baseline')`);
-                flatValues.push(employee.id, datePrefix, comp.component_id, comp.amount, comp.quantity);
-            }
-            await client.query(`
-                INSERT INTO monthly_salary_overrides (employee_id, month, component_id, amount, quantity, status, reason)
-                VALUES ${values.join(', ')}
-                ON CONFLICT (employee_id, month, component_id) DO NOTHING
-            `, flatValues);
-        }
-
-        // RULE 1+2: Now fetch all Approved components for this month
-        // (baseline auto-inserted above + manual overrides that were approved via Governance)
+        // RULE 3: Fetch all standard components directly from the permanent salary structure
+        // By-passing manual overrides and baseline logic
         const componentsRes = await client.query(`
             SELECT 
-                mo.amount, 
-                mo.quantity, 
+                ess.amount, 
+                ess.quantity, 
                 sc.name, 
                 sc.type, 
                 sc.is_taxable, 
@@ -207,18 +176,18 @@ const createPayroll = async (req, res) => {
                 sc.etf_eligible,
                 sc.welfare_eligible,
                 sc.id as component_id,
-                mo.reason
-            FROM monthly_salary_overrides mo
-            JOIN salary_components sc ON mo.component_id = sc.id
-            WHERE mo.employee_id = $1 AND mo.month = $2 AND mo.status = 'Approved'
-        `, [employee.id, datePrefix]);
+                '' as reason
+            FROM employee_salary_structure ess
+            JOIN salary_components sc ON ess.component_id = sc.id
+            WHERE ess.employee_id = $1
+        `, [employee.id]);
 
         const components = componentsRes.rows;
 
         if (components.length === 0) {
             await client.query('ROLLBACK');
             return res.status(400).json({
-                message: 'No approved salary components found for this month. Please check the employee salary structure.'
+                message: 'No permanent salary structure found for this employee. Please set up their Salary Structure in Settings first.'
             });
         }
 
