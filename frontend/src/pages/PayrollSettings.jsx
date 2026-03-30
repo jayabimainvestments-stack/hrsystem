@@ -1,10 +1,247 @@
-// Deployment Marker: 2026-03-25-1542-ForceRebuild
-import { useState, useEffect } from 'react';
+// Deployment Marker: 2026-03-27-0954-HooksFix
+import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { Settings, Plus, Trash2, Save, X, Info, Activity, AlertTriangle, ShieldAlert, Lock, Shield, Users } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import UserPermissionsModal from '../components/UserPermissionsModal';
+
+// ─── Salary Baseline Tab — Separate component to satisfy React hooks rules ───
+const SalaryBaselineTab = ({ consolidatedBaseline, structureLoading, fetchConsolidatedBaseline }) => {
+    const [expandedEmp, setExpandedEmp] = useState(null);
+
+    useEffect(() => {
+        if (!consolidatedBaseline?.employees?.length && !structureLoading) {
+            fetchConsolidatedBaseline();
+        }
+    }, []);
+
+    const statusConfig = {
+        'Confirmed':                    { bg: 'bg-emerald-50',  text: 'text-emerald-700', dot: 'bg-emerald-500',  label: '✓ Payroll Processed' },
+        'Not Processed':                { bg: 'bg-slate-100',   text: 'text-slate-500',   dot: 'bg-slate-400',   label: '— Not Processed' },
+        'Pending Approval':             { bg: 'bg-amber-50',    text: 'text-amber-700',   dot: 'bg-amber-400',   label: '⏳ Pending Approval' },
+        'Override Applied':             { bg: 'bg-blue-50',     text: 'text-blue-700',    dot: 'bg-blue-500',    label: '↑ Override Applied' },
+        'Pending for Approval':         { bg: 'bg-orange-50',   text: 'text-orange-700',  dot: 'bg-orange-400',  label: '⏳ Pending for Approval' },
+        'Approved – Not Yet Processed': { bg: 'bg-teal-50',     text: 'text-teal-700',    dot: 'bg-teal-400',    label: '✓ Approved – Awaiting Payroll' },
+    };
+
+    const getStatusBadge = (status) => {
+        const cfg = statusConfig[status] || { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: status };
+        return (
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${cfg.bg} ${cfg.text}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} ${(status === 'Pending Approval' || status === 'Pending for Approval') ? 'animate-pulse' : ''}`}></span>
+                {cfg.label}
+            </span>
+        );
+    };
+
+    const targetMonth = consolidatedBaseline?.month || '';
+    const employees = consolidatedBaseline?.employees || [];
+
+    return (
+        <div className="space-y-6 animate-in slide-in-from-bottom duration-700">
+            {/* Header */}
+            <div className="bg-white rounded-[3rem] p-10 shadow-2xl shadow-slate-200 border border-slate-50">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                    <div>
+                        <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tighter leading-none">
+                            Salary <span className="text-blue-600 italic">Baseline</span>
+                        </h2>
+                        <p className="text-slate-400 font-medium mt-2 text-sm">
+                            Detailed per-employee, per-component payroll baseline for <span className="font-black text-slate-600">{targetMonth || '—'}</span>
+                        </p>
+                    </div>
+                    <div className="flex flex-wrap gap-3 text-[10px] font-black uppercase tracking-widest">
+                        {Object.entries(statusConfig).map(([key, cfg]) => (
+                            <span key={key} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${cfg.bg} ${cfg.text}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`}></span>
+                                {cfg.label}
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* Employee Cards */}
+            {structureLoading ? (
+                <div className="py-32 text-center text-slate-400 font-black uppercase text-xs tracking-widest animate-pulse">
+                    Fetching organization baseline...
+                </div>
+            ) : employees.length === 0 ? (
+                <div className="py-32 text-center text-slate-400 italic">No active employees found. {targetMonth && `(for ${targetMonth})`}</div>
+            ) : employees.map(emp => {
+                const isExpanded = expandedEmp === emp.id;
+                const hasPending = (emp.components || []).some(c =>
+                    c.status === 'Pending Approval' || c.status === 'Pending for Approval' || c.status === 'Approved – Not Yet Processed'
+                );
+                const net = (emp.total_earnings || 0) - (emp.total_deductions || 0);
+
+                return (
+                    <div key={emp.id} className={`bg-white rounded-[3rem] shadow-xl border transition-all duration-300 overflow-hidden ${hasPending ? 'border-amber-200 shadow-amber-100/50' : 'border-slate-100'}`}>
+                        {/* Summary Row */}
+                        <div
+                            className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 px-10 py-8 cursor-pointer group transition-all ${isExpanded ? 'bg-slate-950 rounded-t-[3rem]' : 'hover:bg-slate-50 rounded-[3rem]'}`}
+                            onClick={() => setExpandedEmp(isExpanded ? null : emp.id)}
+                        >
+                            <div className="flex items-center gap-6">
+                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl ${isExpanded ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-600'}`}>
+                                    {emp.name?.charAt(0)}
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-3 flex-wrap">
+                                        <p className={`font-black uppercase tracking-tight text-base ${isExpanded ? 'text-white' : 'text-slate-900'}`}>{emp.name}</p>
+                                        {hasPending && <span className="px-2 py-0.5 bg-amber-400/20 text-amber-500 text-[9px] font-black uppercase tracking-widest rounded-full border border-amber-200 animate-pulse">⚠ Pending Items</span>}
+                                        {emp.payroll_processed && <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-600 text-[9px] font-black uppercase tracking-widest rounded-full border border-emerald-200">✓ Payroll Done</span>}
+                                    </div>
+                                    <p className={`text-[10px] font-bold uppercase tracking-widest mt-0.5 ${isExpanded ? 'text-slate-400' : 'text-slate-400'}`}>
+                                        {emp.emp_code} · {emp.designation}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-8 ml-auto pr-4">
+                                {/* Earnings Col */}
+                                <div className="text-right min-w-[120px]">
+                                    <p className={`text-[9px] font-black uppercase tracking-widest ${isExpanded ? 'text-emerald-400' : 'text-emerald-500'}`}>Earnings</p>
+                                    <p className={`font-black tabular-nums text-lg ${isExpanded ? 'text-emerald-400' : 'text-emerald-600'}`}>{Number(emp.total_earnings || 0).toLocaleString()}</p>
+                                    <div className="flex flex-wrap justify-end gap-1 mt-1.5">
+                                        {(emp.components || []).filter(c => c.type === 'Earning').slice(0, 2).map((c, i) => (
+                                            <div key={i} className={`px-2 py-0.5 rounded-md flex items-center justify-center text-[7px] font-black uppercase tracking-tight ${isExpanded ? 'bg-white/10 text-emerald-300' : 'bg-emerald-50 text-emerald-600 border border-emerald-100/50'}`}>
+                                                {c.name}
+                                                <span className="ml-1 opacity-60">
+                                                    {(c.status === 'Pending Approval' || c.status === 'Pending for Approval') ? '⏳' : c.status === 'Confirmed' ? '✓' : ''}
+                                                </span>
+                                            </div>
+                                        ))}
+                                        {(emp.components || []).filter(c => c.type === 'Earning').length > 2 && <span className="text-[7px] font-black text-slate-400 leading-none self-center ml-1">+{(emp.components || []).filter(c => c.type === 'Earning').length - 2} more</span>}
+                                    </div>
+                                </div>
+
+                                {/* Deductions Col */}
+                                <div className="text-right min-w-[120px]">
+                                    <p className={`text-[9px] font-black uppercase tracking-widest ${isExpanded ? 'text-rose-400' : 'text-rose-500'}`}>Deductions</p>
+                                    <p className={`font-black tabular-nums text-lg ${isExpanded ? 'text-rose-400' : 'text-rose-500'}`}>-{Number(emp.total_deductions || 0).toLocaleString()}</p>
+                                    <div className="flex flex-wrap justify-end gap-1 mt-1.5">
+                                        {(emp.components || []).filter(c => c.type === 'Deduction' || c.type === 'Manual').slice(0, 2).map((c, i) => (
+                                            <div key={i} className={`px-2 py-0.5 rounded-md flex items-center justify-center text-[7px] font-black uppercase tracking-tight ${isExpanded ? 'bg-white/10 text-rose-300' : 'bg-rose-50 text-rose-600 border border-rose-100/50'}`}>
+                                                {c.name}
+                                                <span className="ml-1 opacity-60">
+                                                    {(c.status === 'Pending Approval' || c.status === 'Pending for Approval') ? '⏳' : c.status === 'Confirmed' ? '✓' : ''}
+                                                </span>
+                                            </div>
+                                        ))}
+                                        {(emp.components || []).filter(c => c.type === 'Deduction' || c.type === 'Manual').length > 2 && <span className="text-[7px] font-black text-slate-400 leading-none self-center ml-1">+{(emp.components || []).filter(c => c.type === 'Deduction' || c.type === 'Manual').length - 2} more</span>}
+                                    </div>
+                                </div>
+
+                                {/* Net Col */}
+                                <div className="text-right min-w-[100px] border-l border-slate-100 pl-6 ml-2">
+                                    <p className={`text-[9px] font-black uppercase tracking-widest ${isExpanded ? 'text-white/40' : 'text-slate-400'}`}>Net</p>
+                                    <p className={`font-black tabular-nums text-xl ${isExpanded ? 'text-white' : 'text-slate-900'}`}>{Number(net || 0).toLocaleString()}</p>
+                                    <p className={`text-[7px] font-black uppercase tracking-widest mt-1.5 ${isExpanded ? 'text-blue-400/60' : 'text-blue-600/40'}`}>Baseline Summary</p>
+                                </div>
+
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isExpanded ? 'bg-white/10 rotate-180' : 'bg-slate-100 group-hover:bg-slate-200'}`}>
+                                    <svg width="14" height="14" fill="none" stroke={isExpanded ? '#fff' : '#94a3b8'} strokeWidth="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Expanded Detail */}
+                        {isExpanded && (
+                            <div className="px-10 pb-8 pt-2">
+                                {(!emp.components || emp.components.length === 0) ? (
+                                    <p className="text-center text-slate-400 italic py-8">No salary structure configured for this employee.</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {/* Earnings */}
+                                        {emp.components.filter(c => c.type === 'Earning').length > 0 && (
+                                            <div>
+                                                <p className="text-[9px] font-black uppercase tracking-[0.25em] text-emerald-500 mb-2 mt-4 ml-2">Earnings</p>
+                                                <div className="space-y-2">
+                                                    {emp.components.filter(c => c.type === 'Earning').map((comp, i) => (
+                                                        <div key={i} className="flex items-center justify-between px-6 py-4 bg-slate-50 hover:bg-white rounded-2xl border border-slate-100 transition-all">
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="w-8 h-8 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-500 text-xs font-black">+</div>
+                                                                <div>
+                                                                    <p className="font-black text-slate-800 text-sm">{comp.name}{comp.quantity > 0 ? ` (${comp.quantity}L)` : ''}</p>
+                                                                    {comp.status_detail && <p className="text-[10px] text-slate-400 font-medium mt-0.5">{comp.status_detail}</p>}
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-4">
+                                                                <p className="font-black text-emerald-600 tabular-nums text-base">LKR {Number(comp.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                                                                {getStatusBadge(comp.status)}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Deductions */}
+                                        {emp.components.filter(c => c.type === 'Deduction').length > 0 && (
+                                            <div>
+                                                <p className="text-[9px] font-black uppercase tracking-[0.25em] text-rose-500 mb-2 mt-4 ml-2">Deductions</p>
+                                                <div className="space-y-2">
+                                                    {emp.components.filter(c => c.type === 'Deduction').map((comp, i) => (
+                                                        <div key={i} className="flex items-center justify-between px-6 py-4 bg-slate-50 hover:bg-white rounded-2xl border border-slate-100 transition-all">
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="w-8 h-8 bg-rose-50 rounded-xl flex items-center justify-center text-rose-500 text-xs font-black">-</div>
+                                                                <div>
+                                                                    <p className="font-black text-slate-800 text-sm">
+                                                                        {comp.name}
+                                                                        {comp.installments_remaining != null && <span className="ml-2 text-[10px] font-bold text-slate-400">({comp.installments_remaining} left)</span>}
+                                                                    </p>
+                                                                    {comp.status_detail && <p className="text-[10px] text-slate-400 font-medium mt-0.5">{comp.status_detail}</p>}
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-4">
+                                                                <p className="font-black text-rose-500 tabular-nums text-base">-LKR {Number(comp.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                                                                {getStatusBadge(comp.status)}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Manual */}
+                                        {emp.components.filter(c => c.type === 'Manual').length > 0 && (
+                                            <div>
+                                                <p className="text-[9px] font-black uppercase tracking-[0.25em] text-amber-500 mb-2 mt-4 ml-2">Manual Deductions & Allowances</p>
+                                                <div className="space-y-2">
+                                                    {emp.components.filter(c => c.type === 'Manual').map((comp, i) => (
+                                                        <div key={i} className="flex items-center justify-between px-6 py-4 bg-amber-50/40 hover:bg-amber-50 rounded-2xl border border-amber-100 transition-all">
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="w-8 h-8 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 text-xs font-black">M</div>
+                                                                <div>
+                                                                    <p className="font-black text-slate-800 text-sm">{comp.name}</p>
+                                                                    {comp.status_detail && <p className="text-[10px] text-slate-400 font-medium mt-0.5">{comp.status_detail}</p>}
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-4">
+                                                                <p className="font-black text-amber-600 tabular-nums text-base">LKR {Number(comp.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                                                                {getStatusBadge(comp.status)}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Net */}
+                                        <div className="flex justify-end items-center gap-4 pt-4 border-t border-slate-100 mt-4">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Baseline Net Salary</p>
+                                            <p className={`text-2xl font-black tabular-nums ${net >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+                                                LKR {Number(net).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
 
 const PayrollSettings = () => {
     const [employees, setEmployees] = useState([]);
@@ -24,7 +261,7 @@ const PayrollSettings = () => {
     const [selectedPermUser, setSelectedPermUser] = useState(null);
     const [hrManagers, setHrManagers] = useState([]);
     const [fuelPrice, setFuelPrice] = useState(370);
-    const [consolidatedBaseline, setConsolidatedBaseline] = useState([]);
+    const [consolidatedBaseline, setConsolidatedBaseline] = useState({ month: '', employees: [] });
 
 
     const { user } = useAuth();
@@ -69,7 +306,7 @@ const PayrollSettings = () => {
         setStructureLoading(true);
         try {
             const { data } = await api.get('/payroll-settings/consolidated');
-            setConsolidatedBaseline(data.employees || []);
+            setConsolidatedBaseline(data || { month: '', employees: [] });
         } catch (error) {
             console.error("Error fetching consolidated baseline", error);
         } finally {
@@ -535,80 +772,13 @@ const PayrollSettings = () => {
                     </div>
                 )}
                 {activeTab === 'structure' && (
-                    <div className="bg-white rounded-[4rem] shadow-2xl shadow-slate-200 border border-slate-50 p-12 lg:p-16 animate-in slide-in-from-bottom duration-700">
-                        <div className="flex flex-col lg:flex-row justify-between items-start gap-12 mb-16">
-                            <div className="max-w-2xl space-y-6">
-                                <h2 className="text-4xl font-black text-slate-900 uppercase tracking-tighter leading-none">
-                                    Salary <span className="text-blue-600 italic underline decoration-blue-100 underline-offset-8">Structure</span>
-                                </h2>
-                                <p className="text-slate-500 font-medium text-lg leading-relaxed">
-                                    Organization-wide configuration. Review all permanent salary structures for the current month.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="bg-slate-50 rounded-[3rem] border border-slate-100 overflow-hidden shadow-inner min-h-[400px]">
-                            <div className="overflow-x-auto">
-                                <table className="w-full border-collapse">
-                                    <thead>
-                                        <tr className="bg-slate-900/5 border-b border-slate-100">
-                                            {['Employee Code', 'Full Name', 'Permanent Earnings', 'Deductions', 'Baseline Net (LKR)', 'Actions'].map(h => (
-                                                <th key={h} className="px-10 py-8 text-left text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
-                                                    {h}
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {structureLoading ? (
-                                            <tr>
-                                                <td colSpan={6} className="py-32 text-center text-slate-400 font-black uppercase text-xs tracking-widest italic animate-pulse">
-                                                    Fetching organization baseline...
-                                                </td>
-                                            </tr>
-                                        ) : consolidatedBaseline.length === 0 ? (
-                                            <tr>
-                                                <td colSpan={6} className="py-32 text-center text-slate-400 italic">No active employees found.</td>
-                                            </tr>
-                                        ) : consolidatedBaseline.map(emp => {
-                                            const net = (parseFloat(emp.total_earnings) || 0) - (parseFloat(emp.total_deductions) || 0);
-                                            return (
-                                                <tr key={emp.id} className="group hover:bg-white transition-all">
-                                                    <td className="px-10 py-6 font-black text-xs text-blue-600 tracking-widest">{emp.emp_code}</td>
-                                                    <td className="px-10 py-6">
-                                                        <p className="font-black text-slate-800 uppercase tracking-tight text-sm">{emp.name}</p>
-                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{emp.designation}</p>
-                                                    </td>
-                                                    <td className="px-10 py-6 font-black text-sm text-emerald-600 tabular-nums">
-                                                        {Number(emp.total_earnings || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                    </td>
-                                                    <td className="px-10 py-6 font-black text-sm text-rose-500 tabular-nums">
-                                                        -{Number(emp.total_deductions || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                    </td>
-                                                    <td className="px-10 py-6">
-                                                        <span className="bg-white px-5 py-3 rounded-2xl border border-slate-100 font-black text-slate-900 tabular-nums text-base shadow-sm group-hover:shadow-lg transition-all">
-                                                            {net.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-10 py-6">
-                                                        <button 
-                                                            onClick={() => alert('Use Financial -> Permanent Salary to edit individual structures.') }
-                                                            className="p-4 rounded-xl text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-all"
-                                                        >
-                                                            <Settings size={20} />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-
-                    </div>
+                    <SalaryBaselineTab 
+                        consolidatedBaseline={consolidatedBaseline}
+                        structureLoading={structureLoading}
+                        fetchConsolidatedBaseline={fetchConsolidatedBaseline}
+                    />
                 )}
+
 
 
 

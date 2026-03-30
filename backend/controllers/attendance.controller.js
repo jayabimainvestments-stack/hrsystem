@@ -39,14 +39,17 @@ const logAttendance = async (req, res) => {
         const shortLeaveHours = parseFloat((earlyDepartureMinutes / 60).toFixed(2));
 
         let statusToSet = status;
-        if (!status || status === 'Present' || status === 'Late' || status === 'Incomplete') {
-            if (clock_in && clock_out) {
-                statusToSet = lateMinutes > 0 ? 'Late' : 'Present';
-            } else if (clock_in) {
-                statusToSet = 'Incomplete';
+        if (clock_in && clock_out) {
+            // Status is Present ONLY if both punches exist AND no lateness/early departure
+            if (lateMinutes <= 0 && earlyDepartureMinutes <= 0) {
+                statusToSet = 'Present';
             } else {
-                statusToSet = status || 'Present';
+                statusToSet = 'Incomplete';
             }
+        } else if (clock_in || clock_out) {
+            statusToSet = 'Incomplete';
+        } else {
+            statusToSet = status || 'Absent';
         }
 
         const isWorkingStatus = statusToSet === 'Present' || statusToSet === 'Late';
@@ -286,13 +289,16 @@ const updateAttendance = async (req, res) => {
         }
 
         let statusToSet = status;
-
-        if (!status || status === 'Present' || status === 'Late' || status === 'Incomplete') {
-            if (clock_in && clock_out) {
-                statusToSet = lateMinutes > 0 ? 'Late' : 'Present';
-            } else if (clock_in) {
+        if (clock_in && clock_out) {
+            if (lateMinutes <= 0 && shortLeaveHours <= 0) {
+                statusToSet = 'Present';
+            } else {
                 statusToSet = 'Incomplete';
             }
+        } else if (clock_in || clock_out) {
+            statusToSet = 'Incomplete';
+        } else {
+            statusToSet = 'Absent';
         }
 
         // PENDING CHANGE (Mandatory for all per user request)
@@ -374,7 +380,7 @@ const getMonthlySummary = async (req, res) => {
                 e.department,
                 COUNT(*) FILTER (WHERE a.status = 'Present') as present_days,
                 COUNT(*) FILTER (WHERE a.status = 'Absent') as absent_days,
-                COUNT(*) FILTER (WHERE a.status = 'Late') as late_days,
+                COUNT(*) FILTER (WHERE a.late_minutes > 0 OR a.short_leave_hours > 0) as late_days,
                 COUNT(*) FILTER (WHERE a.status = 'Incomplete') as incomplete_days,
                 COUNT(*) FILTER (WHERE a.status = 'Leave') as leave_days
             FROM employees e
@@ -443,16 +449,17 @@ const bulkLogAttendance = async (req, res) => {
             }
 
             let statusToSet = status;
-            if (!status || status === 'Present' || status === 'Late' || status === 'Incomplete') {
-                if (lateMinutes > 0) {
-                    statusToSet = 'Late';
-                } else if (clock_in && clock_out && policy && clock_out >= policy.work_end_time) {
-                    statusToSet = 'Present';
-                } else if (clock_in) {
+            if (clock_in && clock_out) {
+                const depMin = (policy && clock_out) ? calculateEarlyDepartureMinutes(clock_out, policy.work_end_time) : 0;
+                if (lateMinutes <= 0 && depMin <= 0) {
                     statusToSet = 'Present';
                 } else {
-                    statusToSet = 'Absent';
+                    statusToSet = 'Incomplete';
                 }
+            } else if (clock_in || clock_out) {
+                statusToSet = 'Incomplete';
+            } else {
+                statusToSet = 'Absent';
             }
 
             // Check if record exists
@@ -479,6 +486,8 @@ const bulkLogAttendance = async (req, res) => {
                     `UPDATE attendance 
                      SET clock_in = COALESCE($1, clock_in),
                          clock_out = COALESCE($2, clock_out),
+                         raw_clock_in = COALESCE(raw_clock_in, $1),
+                         raw_clock_out = COALESCE(raw_clock_out, $2),
                          status = COALESCE($3, status),
                          source = CASE 
                                     WHEN source = 'System Sync' THEN COALESCE($4, 'Bulk Import')
@@ -497,8 +506,8 @@ const bulkLogAttendance = async (req, res) => {
                 }
 
                 const res = await client.query(
-                    `INSERT INTO attendance (employee_id, date, clock_in, clock_out, status, source, late_minutes, leave_reclaimed)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+                    `INSERT INTO attendance (employee_id, date, clock_in, clock_out, raw_clock_in, raw_clock_out, status, source, late_minutes, leave_reclaimed)
+                     VALUES ($1, $2, $3, $4, $3, $4, $5, $6, $7, $8) RETURNING id`,
                     [employee_id, date, clock_in, clock_out, statusToSet, source || 'Bulk Import', lateMinutes, reclaimed]
                 );
                 results.push(res.rows[0].id);

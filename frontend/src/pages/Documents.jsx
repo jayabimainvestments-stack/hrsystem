@@ -36,7 +36,7 @@ const Documents = () => {
         if (!file || !title) return;
 
         const formData = new FormData();
-        formData.append('document', file);
+        formData.append('file', file); // Multer expects 'file'
         formData.append('title', title);
 
         setUploading(true);

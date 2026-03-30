@@ -20,24 +20,33 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-    // Extended types for profile pictures and documents
-    const allowedTypes = /pdf|jpg|jpeg|png|webp|gif|doc|docx/;
+    const allowedExtensions = /pdf|jpg|jpeg|png|webp|gif|doc|docx/;
+    const allowedMimeTypes = [
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/gif',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    
     const ext = path.extname(file.originalname).toLowerCase();
-    const extname = allowedTypes.test(ext);
-    const mimetype = allowedTypes.test(file.mimetype);
+    const isAllowedExt = allowedExtensions.test(ext);
+    const isAllowedMime = allowedMimeTypes.includes(file.mimetype);
 
-    console.log(`Multer Filter: File=${file.originalname}, Ext=${ext}, MIME=${file.mimetype}, ExtMatch=${extname}, MIMEMatch=${mimetype}`);
+    console.log(`Multer Filter: File=${file.originalname}, Ext=${ext}, MIME=${file.mimetype}, ExtMatch=${isAllowedExt}, MIMEMatch=${isAllowedMime}`);
 
-    if (extname && mimetype) {
+    if (isAllowedExt && isAllowedMime) {
         return cb(null, true);
     } else {
-        cb(new Error(`Format not supported (${file.mimetype}). Please use JPG, PNG, WEBP, or PDF.`));
+        cb(new Error(`Format not supported. Ext: ${ext}, MIME: ${file.mimetype}. Please use JPG, PNG, WEBP, PDF, or Word DOC/DOCX.`));
     }
 };
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
     fileFilter: fileFilter
 });
 

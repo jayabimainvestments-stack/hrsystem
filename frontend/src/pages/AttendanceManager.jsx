@@ -602,7 +602,7 @@ const AttendanceManager = () => {
                                     Status Overlay
                                 </label>
                                 <div className="flex flex-wrap gap-2">
-                                    {['Present', 'Late Arrived', 'Early Departure', 'Incomplete', 'Absent', 'Leave'].map(status => (
+                                    {['Present', 'Incomplete', 'Absent', 'Leave'].map(status => (
                                         <button
                                             key={status}
                                             onClick={() => setStatusSearch(statusSearch === status ? '' : status)}
@@ -611,11 +611,7 @@ const AttendanceManager = () => {
                                                 : 'bg-white text-slate-400 border-slate-50 hover:border-blue-100 hover:text-blue-500'
                                                 }`}
                                         >
-                                            {status === 'Incomplete' ? (
-                                                <div className="flex flex-col items-center">
-                                                    <span>Incomplete</span>
-                                                </div>
-                                            ) : status}
+                                            {status}
                                         </button>
                                     ))}
                                 </div>
@@ -1422,22 +1418,7 @@ const AttendanceManager = () => {
                                         </div>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Work Status</label>
-                                        <select
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-bold outline-none focus:ring-2 ring-blue-500/10 transition-all text-slate-700 appearance-none"
-                                            value={editing.status}
-                                            onChange={e => setEditing({ ...editing, status: e.target.value })}
-                                            required
-                                        >
-                                            <option value="Present">Present</option>
-                                            <option value="Late">Late</option>
-                                            <option value="Incomplete">Incomplete</option>
-                                            <option value="Absent">Absent</option>
-                                            <option value="Leave">Leave</option>
-                                            <option value="Half Day">Half Day</option>
-                                        </select>
-                                    </div>
+                                    {/* Work Status is now automated based on punch times */}
 
                                     <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-2xl shadow-xl shadow-blue-100 font-black uppercase text-xs tracking-widest hover:bg-blue-700 transition-all mt-4">
                                         Authorize Adjustments

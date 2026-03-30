@@ -245,8 +245,16 @@ const bulkProcessPunches = async (req, res) => {
             }
             const device = deviceRes.rows[0];
 
+            // 2. Load Policy and Utils (Once for bulk)
+            const policyRes = await client.query('SELECT work_start_time, work_end_time FROM attendance_policies ORDER BY id LIMIT 1');
+            const policy = policyRes.rows[0] || { work_start_time: '08:30:00', work_end_time: '16:31:00' };
+            const { calculateLateMinutes } = require('../utils/attendance.utils');
+            const { reconcileLeaveBalance } = require('../services/attendance.service');
+
             let successCount = 0;
             let errorCount = 0;
+
+            const MIN_SYNC_DATE = '2026-03-16';
 
             for (const punch of punches) {
                 const { biometric_id, punch_time } = punch;
@@ -259,34 +267,48 @@ const bulkProcessPunches = async (req, res) => {
                 }
                 const employee = empRes.rows[0];
 
-                const pDate = new Date(punch_time);
-                const punchDate = pDate.toISOString().split('T')[0];
-                const punchTimeStr = pDate.toTimeString().split(' ')[0];
+                // Robust string-based extraction to avoid UTC/Timezone shifts
+                let punchDate, punchTimeStr;
+                if (punch_time.includes(' ')) {
+                    const parts = punch_time.split(' ');
+                    punchDate = parts[0];
+                    punchTimeStr = parts[1];
+                } else if (punch_time.includes('T')) {
+                    const parts = punch_time.split('T');
+                    punchDate = parts[0];
+                    punchTimeStr = parts[1].split('.')[0].split('+')[0].replace('Z', '');
+                } else {
+                    // Fallback to legacy behavior if format is unknown
+                    const pDate = new Date(punch_time);
+                    punchDate = pDate.toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
+                    punchTimeStr = pDate.toTimeString().split(' ')[0];
+                }
+
+                if (punchDate < MIN_SYNC_DATE) {
+                    console.log(`[BIOMETRIC-USB] Ignoring old punch from ${punchDate}`);
+                    continue; 
+                }
 
                 const existingAttendance = await client.query(
-                    'SELECT id, clock_in FROM attendance WHERE employee_id = $1 AND date = $2',
+                    'SELECT id, clock_in, status, source, leave_reclaimed FROM attendance WHERE employee_id = $1 AND date = $2',
                     [employee.id, punchDate]
                 );
 
                 if (existingAttendance.rows.length === 0) {
                     // First punch -> Clock In
+                    const lateMinutes = calculateLateMinutes(punchTimeStr, policy.work_start_time);
+                    const statusToSet = lateMinutes > 0 ? 'Late' : 'Incomplete';
+                    
                     await client.query(
-                        `INSERT INTO attendance (employee_id, date, clock_in, source, device_id)
-                         VALUES ($1, $2, $3, $4, $5)`,
-                        [employee.id, punchDate, punchTimeStr, 'Biometric-USB', device.device_name]
+                        `INSERT INTO attendance (employee_id, date, clock_in, raw_clock_in, raw_clock_out, status, source, device_id, late_minutes)
+                         VALUES ($1, $2, $3, $3, $3, $4, $5, $6, $7)`,
+                        [employee.id, punchDate, punchTimeStr, statusToSet, 'Biometric-USB', device.device_name, lateMinutes]
                     );
                 } else {
                     const existing = existingAttendance.rows[0];
-                    const ALLOWED_SOURCES = ['Biometric', 'Biometric-USB', 'Biometric-ADMS', 'System Sync', null];
+                    const ALLOWED_SOURCES = ['Biometric', 'Biometric-USB', 'Biometric-ADMS', 'System Sync', 'System-Init', 'System Init', 'Absent', null];
 
-                    const MIN_SYNC_DATE = '2026-03-16';
-        if (punchDate < MIN_SYNC_DATE) {
-            console.log(`[BIOMETRIC] Ignoring old punch from ${punchDate}`);
-            continue; // Skip this punch and move to the next
-        }
-
-        // Logic to prevent overwriting manual records unless from specific sources
-                    if (ALLOWED_SOURCES.includes(existing.source)) {
+                    if (ALLOWED_SOURCES.includes(existing.source) || existing.status === 'Absent' || existing.status === 'Leave') {
                         // PROTECTION 2: Check for pending changes
                         const pendingCheck = await client.query(
                             "SELECT id FROM pending_changes WHERE entity = 'attendance' AND entity_id = $1 AND status = 'Pending'",
@@ -297,14 +319,44 @@ const bulkProcessPunches = async (req, res) => {
                             continue;
                         }
 
-                        // If this punch is much later than the current clock_out, update clock_out.
-                        // Or simply update clock_out to the maximum time for that day.
+                        let statusToSet = existing.status;
+                        let clockIn = existing.clock_in;
+                        let lateMinutes = 0;
+
+                        if (!clockIn) {
+                            // This was an Absent/Leave placeholder. Treat this punch as Clock-In
+                            clockIn = punchTimeStr;
+                            lateMinutes = calculateLateMinutes(clockIn, policy.work_start_time);
+                            statusToSet = lateMinutes > 0 ? 'Late' : 'Incomplete';
+                        } else {
+                            // Already has clock_in. This is a Clock-Out update.
+                            // If it was Incomplete, and this punch is valid clock-out, mark as Present (or Late if already late)
+                            if (existing.status === 'Incomplete' && punchTimeStr >= policy.work_end_time) {
+                                // If it didn't have a late status, it becomes Present.
+                                // If it already had status from IN (though single punch is Incomplete), we check late minutes.
+                                const inLateMins = calculateLateMinutes(clockIn, policy.work_start_time);
+                                statusToSet = inLateMins > 0 ? 'Late' : 'Present';
+                            }
+                        }
+
+                        // Reconcile Leave Balance if status is now working
+                        const { reconcileLeaveBalance } = require('../services/attendance.service');
+                        let reclaimed = existing.leave_reclaimed;
+                        if ((statusToSet === 'Present' || statusToSet === 'Late') && !existing.leave_reclaimed) {
+                            reclaimed = await reconcileLeaveBalance(client, employee.id, punchDate, statusToSet);
+                        }
+
                         await client.query(
                             `UPDATE attendance 
-                             SET clock_out = GREATEST(COALESCE(clock_out, '00:00:00'), $1),
+                             SET clock_in = $1,
+                                 clock_out = GREATEST(COALESCE(clock_out, '00:00:00'), $2),
+                                 raw_clock_in = COALESCE(raw_clock_in, $1),
+                                 raw_clock_out = GREATEST(COALESCE(raw_clock_out, '00:00:00'), $2),
+                                 status = $3,
+                                 leave_reclaimed = $4,
                                  updated_at = CURRENT_TIMESTAMP 
-                             WHERE id = $2`,
-                            [punchTimeStr, existing.id]
+                             WHERE id = $5`,
+                            [clockIn, punchTimeStr, statusToSet, reclaimed, existing.id]
                         );
                     } else {
                         console.log(`[BULK-BIOMETRIC] Skipping update for record ${existing.id} (Source: ${existing.source})`);

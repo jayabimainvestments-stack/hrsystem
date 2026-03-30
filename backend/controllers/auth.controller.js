@@ -1,5 +1,5 @@
 const db = require('../config/db');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 const generateToken = (id, role) => {
@@ -52,33 +52,30 @@ const registerUser = async (req, res) => {
 const loginUser = async (req, res) => {
     const { email, password } = req.body;
     console.log(`[AUTH] Login attempt for: ${email}`);
-    console.time('login_total');
 
     try {
-        // Case-insensitive email search - Optimized to use direct equality if possible, though ILIKE is safer for now
-        console.time('db_query');
+        // Case-insensitive email search
         const userRes = await db.query('SELECT * FROM users WHERE email ILIKE $1', [email]);
-        console.timeEnd('db_query');
 
         if (userRes.rows.length === 0) {
-            console.timeEnd('login_total');
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
         const user = userRes.rows[0];
+        console.log(`[AUTH] User found: ${user.email}, Role: ${user.role}`);
 
-        console.time('bcrypt_compare');
+        const authStart = Date.now();
         const isMatch = await bcrypt.compare(password, user.password);
-        console.timeEnd('bcrypt_compare');
+        const authDuration = Date.now() - authStart;
+        
+        console.log(`[AUTH] Bcrypt comparison took ${authDuration}ms`);
 
         if (isMatch) {
             // Check if account is activated
             if (user.activation_token && !user.force_password_change) {
-                console.timeEnd('login_total');
                 return res.status(401).json({ message: 'Account not activated. Please use the link sent to your email.' });
             }
 
-            console.timeEnd('login_total');
             res.json({
                 id: user.id,
                 name: user.name,
@@ -89,12 +86,11 @@ const loginUser = async (req, res) => {
                 profile_picture: user.profile_picture
             });
         } else {
-            console.timeEnd('login_total');
+            console.warn(`[AUTH] Password mismatch for: ${email}`);
             res.status(400).json({ message: 'Invalid credentials' });
         }
     } catch (error) {
         console.error('[AUTH ERROR]', error);
-        console.timeEnd('login_total');
         res.status(400).json({ message: error.message });
     }
 };

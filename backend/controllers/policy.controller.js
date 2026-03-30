@@ -98,12 +98,19 @@ const getFuelSplitPreview = async (req, res) => {
         // Determine start and end date for the month
         const [year, monthNum] = month.split('-').map(Number);
         
-        // Period: 25th of last month to 24th of current month (prevents 1-day overlap)
-        const lastMonthDate = new Date(year, monthNum - 2, 25);
-        const startDate = lastMonthDate.toISOString().split('T')[0];
-        
-        const currentMonthEnd = new Date(year, monthNum - 1, 24);
-        const endDate = currentMonthEnd.toISOString().split('T')[0];
+        // ENTERPRISE RULE: March 2026 Period is Feb 25th to March 25th
+        let startDate, endDate;
+        if (year === 2026 && monthNum === 3) {
+            startDate = '2026-02-25';
+            endDate = '2026-03-25';
+        } else {
+            // Standard Period: 25th of last month to 24th of current month
+            const lastMonthDate = new Date(year, monthNum - 2, 25);
+            startDate = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}-25`;
+            
+            const currentMonthEnd = new Date(year, monthNum - 1, 24);
+            endDate = `${currentMonthEnd.getFullYear()}-${String(currentMonthEnd.getMonth() + 1).padStart(2, '0')}-24`;
+        }
 
         const results = {};
         for (const emp of employees) {

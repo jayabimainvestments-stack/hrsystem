@@ -1,7 +1,6 @@
 const db = require('../config/db');
 const path = require('path');
-const { generateRandomPassword, sendEmail } = require('../utils/email.utils');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 
 // @desc    Create a new job posting
 // @route   POST /api/recruitment/jobs

@@ -405,30 +405,215 @@ const updateMonthlyOverrides = async (req, res) => {
 };
 
 const getConsolidatedBaseline = async (req, res) => {
+    // 0. Determine target month (Allow override via query)
+    const currentMonth = req.query.month || new Date().toISOString().slice(0, 7); 
+
     try {
+        // 0. Fetch latest fuel price for dynamic calculation
+        const fuelPriceRes = await db.query("SELECT price_per_liter FROM fuel_price_history ORDER BY effective_from_date DESC LIMIT 1");
+        const latestFuelPrice = fuelPriceRes.rows.length > 0 ? parseFloat(fuelPriceRes.rows[0].price_per_liter) : 370.00;
+
+        // 1. Get all employees with their permanent salary structure components
         const result = await db.query(`
             SELECT 
                 e.id, 
                 e.employee_id as emp_code, 
                 COALESCE(u.name, u.email, 'Employee ' || e.employee_id) as name, 
                 e.designation,
-                COALESCE(SUM(CASE WHEN sc.type = 'Earning' THEN es.amount ELSE 0 END), 0) as total_earnings,
-                COALESCE(SUM(CASE WHEN sc.type = 'Deduction' THEN es.amount ELSE 0 END), 0) as total_deductions
+                e.department,
+                e.employment_status,
+                sc.id as component_id,
+                sc.name as component_name,
+                sc.type as component_type,
+                es.amount as permanent_amount,
+                es.quantity,
+                es.installments_remaining,
+                sc.epf_eligible,
+                sc.etf_eligible
             FROM employees e
-            LEFT JOIN users u ON e.user_id = u.id
+            JOIN users u ON e.user_id = u.id
             LEFT JOIN employee_salary_structure es ON e.id = es.employee_id
             LEFT JOIN salary_components sc ON es.component_id = sc.id
-            GROUP BY e.id, u.name, u.email, e.employee_id, e.designation, e.employment_status
-            ORDER BY COALESCE(u.name, u.email)
+            WHERE e.employment_status = 'Active'
+            ORDER BY e.id, sc.type DESC, sc.name ASC
         `);
+
+        // 2. Get monthly overrides for current month (to check pending/approved)
+        const overridesRes = await db.query(`
+            SELECT mo.employee_id, mo.component_id, mo.amount, mo.quantity, mo.status, mo.reason, sc.name as component_name
+            FROM monthly_salary_overrides mo
+            JOIN salary_components sc ON mo.component_id = sc.id
+            WHERE mo.month = $1
+        `, [currentMonth]);
+        const overrideMap = {}; // key: `${emp_id}_${comp_id}`
+        for (const ov of overridesRes.rows) {
+            overrideMap[`${ov.employee_id}_${ov.component_id}`] = ov;
+        }
+
+        // 3. Get payroll records for current month (to know if payroll was processed)
+        const payrollRes = await db.query(`
+            SELECT p.user_id, e.id as emp_id
+            FROM payroll p
+            JOIN employees e ON p.user_id = e.user_id
+            WHERE p.month = $1
+        `, [currentMonth]);
+        const processedEmpIds = new Set(payrollRes.rows.map(r => r.emp_id));
+
+        // 4. Get manual deductions (financial_requests) pending/approved for current month
+        const manualRes = await db.query(`
+            SELECT 
+                (elem->>'employee_id')::int as employee_id,
+                fr.type as component_name,
+                (elem->>'amount')::decimal as amount,
+                fr.status,
+                fr.month,
+                (elem->>'reason') as status_detail
+            FROM financial_requests fr,
+            jsonb_array_elements(fr.data) elem
+            WHERE fr.month = $1
+        `, [currentMonth]).catch(() => ({ rows: [] }));
+
+        // 5. Group rows by employee
+        const empMap = {};
+        for (const row of result.rows) {
+            if (!empMap[row.id]) {
+                empMap[row.id] = {
+                    id: row.id,
+                    emp_code: row.emp_code,
+                    name: row.name,
+                    designation: row.designation,
+                    payroll_processed: processedEmpIds.has(row.id),
+                    components: []
+                };
+            }
+
+            if (row.component_id) {
+                const override = overrideMap[`${row.id}_${row.component_id}`];
+                let status = 'Confirmed'; // in salary structure
+                let statusDetail = 'From permanent salary structure';
+                
+                // Dynamic Fuel Calculation: Liters * Latest Price
+                let displayAmount = parseFloat(row.permanent_amount) || 0;
+                if (row.component_name && row.component_name.toLowerCase().includes('fuel') && parseFloat(row.quantity) > 0) {
+                    displayAmount = parseFloat(row.quantity) * latestFuelPrice;
+                }
+
+                if (override) {
+                    if (override.status === 'Pending' || override.status === 'Draft') {
+                        status = 'Pending Approval';
+                        statusDetail = `Override pending: LKR ${parseFloat(override.amount).toLocaleString()} (${override.reason || 'No reason'})`;
+                        displayAmount = parseFloat(override.amount) || displayAmount;
+                    } else if (override.status === 'Approved') {
+                        status = 'Override Applied';
+                        statusDetail = `Monthly override approved: LKR ${parseFloat(override.amount).toLocaleString()}`;
+                        displayAmount = parseFloat(override.amount) || displayAmount;
+                    } else if (override.status === 'Rejected') {
+                        status = 'Rejected';
+                        statusDetail = `Monthly override rejected: ${override.reason || 'No reason specified'}`;
+                    }
+                }
+
+                if (!processedEmpIds.has(row.id)) {
+                    if (status === 'Confirmed') status = 'Not Processed';
+                }
+
+                // Logic to suppress "Monthly Fuel" if ANY other fuel-related entry exists
+                const hasOtherFuel = 
+                    // Case 1: Manual Financial Request
+                    manualRes.rows.some(m => 
+                        m.employee_id === row.id && 
+                        m.component_name.toLowerCase().includes('fuel')
+                    ) ||
+                    // Case 2: Monthly Override (that is not this permanent one)
+                    Object.values(overrideMap).some(ov => 
+                        ov.employee_id === row.id && 
+                        ov.component_name.toLowerCase().includes('fuel')
+                    );
+
+                if (row.component_name.toLowerCase().includes('monthly fuel') && hasOtherFuel) {
+                    continue; 
+                }
+
+                empMap[row.id].components.push({
+                    id: row.component_id, // Standardized: use 'id'
+                    name: row.component_name,
+                    type: row.component_type,
+                    amount: displayAmount,
+                    quantity: parseFloat(row.quantity) || 0,
+                    installments_remaining: row.installments_remaining,
+                    status,
+                    status_detail: statusDetail,
+                    epf_eligible: row.epf_eligible,
+                    etf_eligible: row.etf_eligible
+                });
+            }
+        }
         
-        res.status(200).json({
-            employees: result.rows
-        });
+        // 5.5 Merge Standalone Overrides (not in permanent structure)
+        for (const ov of Object.values(overrideMap)) {
+            const emp = empMap[ov.employee_id];
+            if (!emp) continue;
+
+            // Check if already added via permanent loop (by ID or Name similarity for Fuel)
+            const isAlreadyIncluded = emp.components.some(c => 
+                c.id === ov.component_id || 
+                (ov.component_name.toLowerCase().includes('fuel') && c.name.toLowerCase().includes('fuel'))
+            );
+            
+            if (!isAlreadyIncluded) {
+                const isApplied = processedEmpIds.has(ov.employee_id);
+                emp.components.push({
+                    id: ov.component_id,
+                    name: ov.component_name || 'Variable component',
+                    type: (ov.component_name || '').toLowerCase().includes('deduction') ? 'Deduction' : 'Earning',
+                    amount: parseFloat(ov.amount) || 0,
+                    quantity: parseFloat(ov.quantity) || 0,
+                    status: isApplied ? 'Confirmed' : (ov.status === 'Approved' ? 'Approved – Not Yet Processed' : (ov.status === 'Rejected' ? 'Rejected' : 'Pending Approval')),
+                    status_detail: `Monthly Governance: ${ov.status} (${ov.reason || 'No details'})`
+                });
+            }
+        }
+
+        // 6. Append manual/financial requests as separate pending items
+        for (const manual of manualRes.rows) {
+            const emp = empMap[manual.employee_id];
+            if (!emp) continue;
+            
+            // Check if already added (by Name similarity for Fuel/Loan/Advance)
+            const isAlreadyIncluded = emp.components.some(c => 
+                c.name.toLowerCase().includes(manual.component_name.toLowerCase()) ||
+                (manual.component_name.toLowerCase().includes('fuel') && c.name.toLowerCase().includes('fuel'))
+            );
+
+            if (!isAlreadyIncluded) {
+                const isApplied = processedEmpIds.has(manual.employee_id);
+                const isDeduction = manual.component_name.toLowerCase().includes('advance') || 
+                                    manual.component_name.toLowerCase().includes('loan') || 
+                                    manual.component_name.toLowerCase().includes('deduction');
+                
+                emp.components.push({
+                    id: null,
+                    name: manual.component_name,
+                    type: isDeduction ? 'Deduction' : 'Earning',
+                    amount: parseFloat(manual.amount) || 0,
+                    quantity: 0,
+                    status: isApplied ? 'Confirmed' : (manual.status === 'Approved' ? 'Approved – Not Yet Processed' : `Pending for Approval`),
+                    status_detail: manual.status_detail || `Financial request status: ${manual.status}`
+                });
+            }
+        }
+
+        res.status(200).json({ month: currentMonth, employees: Object.values(empMap).map(emp => {
+            const earnings = emp.components.filter(c => c.type === 'Earning').reduce((s, c) => s + c.amount, 0);
+            const deductions = emp.components.filter(c => c.type === 'Deduction').reduce((s, c) => s + c.amount, 0);
+            return { ...emp, total_earnings: earnings, total_deductions: deductions };
+        })});
     } catch (error) {
+        console.error('[BASELINE_ERROR]', error);
         res.status(500).json({ message: error.message });
     }
 };
+
 
 
 

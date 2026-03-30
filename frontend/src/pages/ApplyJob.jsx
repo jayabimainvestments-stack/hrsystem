@@ -34,14 +34,15 @@ const ApplyJob = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         const data = new FormData();
-        data.append('full_name', formData.full_name);
+        data.append('job_id', id);
+        data.append('name', formData.full_name);
         data.append('email', formData.email);
         data.append('phone', formData.phone);
         if (formData.resume) data.append('resume', formData.resume);
 
         setSubmitting(true);
         try {
-            await api.post(`/recruitment/jobs/${id}/apply`, data, {
+            await api.post('/recruitment/apply', data, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             alert('Application Submitted Successfully');

@@ -163,9 +163,8 @@ const createPayroll = async (req, res) => {
         }
         const employee = empRes.rows[0];
 
-        // RULE 3: Fetch all standard components directly from the permanent salary structure
-        // By-passing manual overrides and baseline logic
-        const componentsRes = await client.query(`
+        // 2. Fetch Permanent Structure
+        const structureRes = await client.query(`
             SELECT 
                 ess.amount, 
                 ess.quantity, 
@@ -175,19 +174,98 @@ const createPayroll = async (req, res) => {
                 sc.epf_eligible,
                 sc.etf_eligible,
                 sc.welfare_eligible,
-                sc.id as component_id,
-                '' as reason
+                sc.id as component_id
             FROM employee_salary_structure ess
             JOIN salary_components sc ON ess.component_id = sc.id
             WHERE ess.employee_id = $1
         `, [employee.id]);
 
-        const components = componentsRes.rows;
+        // 3. Fetch Approved Monthly Overrides
+        const overridesRes = await client.query(`
+            SELECT mo.amount, mo.quantity, sc.name, sc.type, sc.is_taxable, sc.epf_eligible, sc.etf_eligible, sc.welfare_eligible, sc.id as component_id, mo.reason
+            FROM monthly_salary_overrides mo
+            JOIN salary_components sc ON mo.component_id = sc.id
+            WHERE mo.employee_id = $1 AND mo.month = $2 AND mo.status = 'Approved'
+        `, [employee.id, datePrefix]);
+
+        // 4. Fetch Approved Financial Requests (Manual Deductions/Earnings)
+        const manualRes = await client.query(`
+            SELECT 
+                fr.type as name,
+                (elem->>'amount')::decimal as amount,
+                fr.status,
+                (elem->>'reason') as reason
+            FROM financial_requests fr,
+            jsonb_array_elements(fr.data) elem
+            WHERE (elem->>'employee_id')::int = $1 AND fr.month = $2 AND fr.status = 'Approved'
+        `, [employee.id, datePrefix]).catch(() => ({ rows: [] }));
+
+        // 5. MERGE LOGIC (Structure + Overrides)
+        const overrideMap = {};
+        for (const ov of overridesRes.rows) {
+            overrideMap[ov.component_id] = ov;
+        }
+
+        const processedFinancialNames = new Set(manualRes.rows.map(r => r.name.toLowerCase()));
+        const hasFuelInFinancial = Array.from(processedFinancialNames).some(t => t.includes('fuel'));
+
+        let components = [];
+        const processedComponentIds = new Set();
+
+        // Start with Permanent Structure, allowing Overrides to replace them
+        for (const struct of structureRes.rows) {
+            // Suppress fuel in structure IF it's in financial requests
+            if (hasFuelInFinancial && struct.name.toLowerCase().includes('fuel')) {
+                continue; 
+            }
+
+            const ov = overrideMap[struct.component_id];
+            if (ov) {
+                components.push({ ...ov, source: 'Override' });
+            } else {
+                components.push({ ...struct, source: 'Structure', reason: 'From permanent structure' });
+            }
+            processedComponentIds.add(struct.component_id);
+        }
+
+        const structureNames = new Set(structureRes.rows.map(r => r.name.toLowerCase()));
+        const hasFuelInStructure = Array.from(structureNames).some(t => t.includes('fuel'));
+
+        // Add Standalone Overrides (not in permanent structure)
+        for (const ov of overridesRes.rows) {
+            if (!processedComponentIds.has(ov.component_id)) {
+                components.push({ ...ov, source: 'Variable Override' });
+            }
+        }
+
+        // Add Financial Requests
+        for (const manual of manualRes.rows) {
+            // Skip Fuel Allowance if it's already handled by structure recalculation
+            if (hasFuelInStructure && manual.name.toLowerCase().includes('fuel')) {
+                continue;
+            }
+
+            const isDeduction = manual.name.toLowerCase().includes('advance') || 
+                                manual.name.toLowerCase().includes('loan') || 
+                                manual.name.toLowerCase().includes('deduction');
+            
+            components.push({
+                name: manual.name,
+                amount: manual.amount,
+                quantity: 0,
+                type: isDeduction ? 'Deduction' : 'Earning',
+                is_taxable: false, 
+                epf_eligible: false,
+                etf_eligible: false,
+                welfare_eligible: false,
+                reason: manual.reason || 'Manual Adjustment'
+            });
+        }
 
         if (components.length === 0) {
             await client.query('ROLLBACK');
             return res.status(400).json({
-                message: 'No permanent salary structure found for this employee. Please set up their Salary Structure in Settings first.'
+                message: 'No salary components found (Permanent or Monthly Approved). Please set up their Salary Structure or approve overrides first.'
             });
         }
 
@@ -252,11 +330,7 @@ const createPayroll = async (req, res) => {
                 const idx = breakdown.push({ name: comp.name, amount, type: 'Earning', details: comp.reason || comp.details }) - 1;
                 if (compName.includes('attendance')) attendanceAllowanceIdx = idx;
             } else if (comp.type === 'Deduction') {
-                // Skip loan-type deductions from structure — RULE 4: handled by employee_loans tracker below
-                if (compName.includes('loan')) {
-                    console.log(`[PAYROLL_ENGINE] Skipping structure loan component '${comp.name}' — handled by Loan Tracker (Rule 4).`);
-                    continue;
-                }
+                // All deductions (including loans) come from Salary Structure only
                 totalDeductionsInStructure += amount;
                 breakdown.push({ name: comp.name, amount, type: 'Deduction', details: comp.reason || comp.details });
             }
@@ -264,26 +338,8 @@ const createPayroll = async (req, res) => {
             appliedComponentIds.add(comp.component_id);
         }
 
-        // --- 2.1 NEW: Loan Installment Tracker Integration ---
-        const activeLoansRes = await client.query(`
-            SELECT * FROM employee_loans 
-            WHERE employee_id = $1 
-            AND status = 'Approved'
-            AND start_date <= $2::date
-            AND end_date >= $2::date
-            AND installments_paid < num_installments
-        `, [employee.id, `${datePrefix}-01`]);
-
-        for (const loan of activeLoansRes.rows) {
-            const installment = parseFloat(loan.installment_amount);
-            totalDeductionsInStructure += installment;
-            breakdown.push({
-                name: `Loan Installment (Ref: ${loan.id})`,
-                amount: installment,
-                type: 'Deduction',
-                loan_id: loan.id // Tag for post-processing
-            });
-        }
+        // NOTE: Loan data comes ONLY from Salary Structure (employee_salary_structure).
+        // The employee_loans tracker is NOT used for payroll generation.
 
         /* 
 3. Process Attendance/Leave Deductions (LOP) - GATED BY APPROVAL (Manual Entry Page)
@@ -377,14 +433,14 @@ const createPayroll = async (req, res) => {
         }
         */ 
 
-        // RULE 5+: Welfare — calculated from Basic Salary preferentially (Enterprise Rule: 2%)
-        const welfareAmount = (basicSalary > 0) ? (basicSalary * 0.02) : ((welfareBase > 0) ? (welfareBase * 0.02) : 0);
+        // RULE 5+: Welfare — strictly 2% of the Basic Salary as per HR rules
+        const welfareAmount = (basicSalary > 0) ? (basicSalary * 0.02) : 0;
         if (welfareAmount > 0) {
             breakdown.push({
                 name: compWelfare ? compWelfare.name : 'Welfare',
                 amount: welfareAmount,
                 type: 'Deduction',
-                details: `2% of Eligible Earnings (Base: LKR ${welfareBase.toLocaleString()})`
+                details: `2% of Basic Salary (Base: LKR ${basicSalary.toLocaleString()})`
             });
         }
 
@@ -439,7 +495,7 @@ const createPayroll = async (req, res) => {
             `, flatValues);
         }
 
-        // --- 7.1 Post-Processing: Decrement Loan Installments ONLY if applied ---
+        // Post-processing: Decrement installments_remaining in Salary Structure for loan components
         const structurePromises = [];
         for (const comp of components) {
             if (comp.name.toLowerCase().includes('loan') && comp.installments_remaining > 0 && appliedComponentIds.has(comp.component_id)) {
@@ -451,26 +507,6 @@ const createPayroll = async (req, res) => {
             }
         }
         if (structurePromises.length > 0) await Promise.all(structurePromises);
-
-        // New Loan Tracker Post-Processing
-        const loanInstPromises = [];
-        const loanInstallments = breakdown.filter(i => i.loan_id);
-        for (const inst of loanInstallments) {
-            loanInstPromises.push(client.query(`
-                UPDATE employee_loans 
-                SET installments_paid = installments_paid + 1,
-                    status = CASE WHEN (installments_paid + 1) >= num_installments THEN 'Completed' ELSE status END,
-                    updated_at = NOW()
-                WHERE id = $1
-            `, [inst.loan_id]));
-
-            // Log into loan_payments for history tracking
-            loanInstPromises.push(client.query(`
-                INSERT INTO loan_payments (loan_id, payment_date, amount, type, month, note, created_by)
-                VALUES ($1, CURRENT_DATE, $2, 'payroll', $3, $4, $5)
-            `, [inst.loan_id, inst.amount, datePrefix, `Payroll deduction for ${month} ${processingYear}`, req.user.id]));
-        }
-        if (loanInstPromises.length > 0) await Promise.all(loanInstPromises);
 
         // 8. Update Liabilities & Audit Log
         const liabilityPromises = [];
@@ -574,12 +610,14 @@ const updatePayroll = async (req, res) => {
             if (item.type === 'Earning') {
                 if (!itemName.includes('basic')) allowances += amount;
                 // Track bases for auto-calc fallback
-                if (catalogItem) {
+                if (itemName.includes('basic')) {
+                    epfBase += amount; 
+                    etfBase += amount;
+                    welfareBase += amount; // Basic counts explicitly
+                } else if (catalogItem) {
                     if (catalogItem.epf_eligible) epfBase += amount;
                     if (catalogItem.etf_eligible) etfBase += amount;
-                    if (catalogItem.welfare_eligible) welfareBase += amount;
-                } else if (itemName.includes('basic')) {
-                    epfBase += amount; etfBase += amount; welfareBase += amount;
+                    // Welfare is ONLY applied to Basic Salary, so we strictly ignore catalog welfare_eligibility
                 }
             }
         }
@@ -587,7 +625,8 @@ const updatePayroll = async (req, res) => {
         // Auto-calc portions if missing in breakdown
         if (isEpfEligible && epf_employer === 0 && epfBase > 0) epf_employer = epfBase * 0.12;
         if (isEtfEligible && etf_employer === 0 && etfBase > 0) etf_employer = etfBase * 0.03;
-        if (welfare === 0 && welfareBase > 0) welfare = welfareBase * 0.02;
+        // Welfare fallback calculation STRICTLY mapped to basic salary
+        if (welfare === 0 && basic_salary > 0) welfare = basic_salary * 0.02;
 
         const total_earnings = finalBreakdown.filter(i => i.type === 'Earning').reduce((sum, i) => sum + parseFloat(i.amount), 0);
         const total_deductions = finalBreakdown.filter(i => i.type === 'Deduction' || i.type === 'Statutory').reduce((sum, i) => sum + parseFloat(i.amount), 0);
@@ -640,6 +679,14 @@ const updatePayroll = async (req, res) => {
         await updateLiability(client, month, 'ETF 3%', diffEtf3);
         await updateLiability(client, month, 'Welfare 2%', diffWelfare);
         if (diffPaye !== 0) await updateLiability(client, month, 'PAYE Tax', diffPaye);
+
+        if (diffWelfare !== 0) {
+            await client.query(`
+                UPDATE welfare_ledger 
+                SET amount = amount + $1 
+                WHERE ref_id = $2 AND type = 'Collection'
+            `, [diffWelfare, id]);
+        }
 
         // Enterprise Audit Log
         await client.query(`
@@ -707,7 +754,8 @@ const deletePayroll = async (req, res) => {
                 await updateLiability(client, month, 'PAYE Tax', payeTaxAmount);
             }
 
-            // 5. Delete Details & Record
+            // 5. Delete Details & Record (Include welfare_ledger removal first)
+            await client.query('DELETE FROM welfare_ledger WHERE ref_id = $1', [id]);
             await client.query('DELETE FROM payroll_details WHERE payroll_id = $1', [id]);
             await client.query('DELETE FROM payroll WHERE id = $1', [id]);
 
@@ -1096,25 +1144,96 @@ const getPayrollPreview = async (req, res) => {
         if (empRes.rows.length === 0) return res.status(404).json({ message: 'Employee not found' });
         const employee = empRes.rows[0];
 
-        // 2. FETCH ONLY APPROVED COMPONENTS FOR THIS MONTH (STRATEGIC WORKFLOW)
-        const componentsRes = await db.query(`
+        // 2. Fetch Permanent Structure
+        const structureRes = await db.query(`
             SELECT 
-                mo.amount, 
-                mo.quantity, 
+                ess.amount, 
+                ess.quantity, 
                 sc.name, 
                 sc.type, 
                 sc.is_taxable, 
-                sc.epf_eligible, 
-                sc.etf_eligible, 
+                sc.epf_eligible,
+                sc.etf_eligible,
                 sc.welfare_eligible,
-                sc.id as component_id,
-                mo.reason
+                sc.id as component_id
+            FROM employee_salary_structure ess
+            JOIN salary_components sc ON ess.component_id = sc.id
+            WHERE ess.employee_id = $1
+        `, [employee.id]);
+
+        // 3. Fetch Approved Monthly Overrides
+        const overridesRes = await db.query(`
+            SELECT mo.amount, mo.quantity, sc.name, sc.type, sc.is_taxable, sc.epf_eligible, sc.etf_eligible, sc.welfare_eligible, sc.id as component_id, mo.reason
             FROM monthly_salary_overrides mo
             JOIN salary_components sc ON mo.component_id = sc.id
             WHERE mo.employee_id = $1 AND mo.month = $2 AND mo.status = 'Approved'
         `, [employee.id, datePrefix]);
 
-        const components = componentsRes.rows;
+        // 4. Fetch Approved Financial Requests (Manual Deductions/Earnings)
+        const manualRes = await db.query(`
+            SELECT 
+                fr.type as name,
+                (elem->>'amount')::decimal as amount,
+                fr.status,
+                (elem->>'reason') as reason
+            FROM financial_requests fr,
+            jsonb_array_elements(fr.data) elem
+            WHERE (elem->>'employee_id')::int = $1 AND fr.month = $2 AND fr.status = 'Approved'
+        `, [employee.id, datePrefix]).catch(() => ({ rows: [] }));
+
+        // 5. MERGE LOGIC (Structure + Overrides)
+        const overrideMap = {};
+        for (const ov of overridesRes.rows) {
+            overrideMap[ov.component_id] = ov;
+        }
+
+        const structureNamesPreview = new Set(structureRes.rows.map(r => r.name.toLowerCase()));
+        const hasFuelInStructurePreview = Array.from(structureNamesPreview).some(t => t.includes('fuel'));
+
+        let components = [];
+        const processedComponentIds = new Set();
+
+        // Start with Permanent Structure, allowing Overrides to replace them
+        for (const struct of structureRes.rows) {
+            const ov = overrideMap[struct.component_id];
+            if (ov) {
+                components.push({ ...ov, source: 'Override' });
+            } else {
+                components.push({ ...struct, source: 'Structure', reason: 'From permanent structure' });
+            }
+            processedComponentIds.add(struct.component_id);
+        }
+
+        // Add Standalone Overrides (not in permanent structure)
+        for (const ov of overridesRes.rows) {
+            if (!processedComponentIds.has(ov.component_id)) {
+                components.push({ ...ov, source: 'Variable Override' });
+            }
+        }
+
+        // Add Financial Requests
+        for (const manual of manualRes.rows) {
+            // Skip Fuel Allowance if it's already handled by structure recalculation
+            if (hasFuelInStructurePreview && manual.name.toLowerCase().includes('fuel')) {
+                continue;
+            }
+
+            const isDeduction = manual.name.toLowerCase().includes('advance') || 
+                                manual.name.toLowerCase().includes('loan') || 
+                                manual.name.toLowerCase().includes('deduction');
+            
+            components.push({
+                name: manual.name,
+                amount: manual.amount,
+                quantity: 0,
+                type: isDeduction ? 'Deduction' : 'Earning',
+                is_taxable: false, // Financial requests usually post-tax adjustments or non-taxable
+                epf_eligible: false,
+                etf_eligible: false,
+                welfare_eligible: false,
+                reason: manual.reason || 'Manual Adjustment'
+            });
+        }
 
         // FETCH POLICIES, TAX BRACKETS, etc.
         const [policyRes, taxRes] = await Promise.all([
@@ -1134,7 +1253,7 @@ const getPayrollPreview = async (req, res) => {
         let breakdown = [];
         let attendanceAllowanceIdx = -1;
 
-        // Fetch tracker loans check
+        // Fetch tracker loans check (Standard monthly loans)
         const trackerLoansRes = await db.query(`
             SELECT id FROM employee_loans 
             WHERE employee_id = $1 AND status = 'Approved'
@@ -1153,13 +1272,26 @@ const getPayrollPreview = async (req, res) => {
             // Loan Tracker De-duplication
             if (compName.includes('loan') && hasTrackerLoan) continue;
 
-            // Fuel & Performance Display Logic
-            if (compName.includes('fuel') && quantity > 0) {
-                // For preview/display logic
-                const fuelStartDate = (month === 'March' && processingYear == 2026) ? '2026-02-25' : `${datePrefix}-01`;
-                const fuelEndDate = (month === 'March' && processingYear == 2026) ? '2026-03-25' : new Date(processingYear, monthNum, 0).toISOString().split('T')[0];
+            // Rule 5: Skip EPF/ETF/Welfare from structure (auto-calculated later)
+            if (compName.includes('epf') || compName.includes('etf') || compName.includes('welfare')) {
+                continue;
+            }
 
-                const splitResult = await calculateSplitFuelAllowance(db, quantity, fuelStartDate, fuelEndDate);
+                // Fuel & Performance Display Logic
+                if (compName.includes('fuel') && quantity > 0) {
+                    // ENTERPRISE RULE: March 2026 Period is Feb 25th to March 25th
+                    let fuelStartDate, fuelEndDate;
+                    if (month === 'March' && processingYear == 2026) {
+                        fuelStartDate = '2026-02-25';
+                        fuelEndDate = '2026-03-25';
+                    } else {
+                        // Standard Period: 1st to Last of Month
+                        fuelStartDate = `${datePrefix}-01`;
+                        const lastDay = new Date(processingYear, monthNum, 0);
+                        fuelEndDate = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+                    }
+
+                    const splitResult = await calculateSplitFuelAllowance(db, quantity, fuelStartDate, fuelEndDate);
                 amount = splitResult.totalAmount;
                 comp.name = `${comp.name} (${quantity}L)`;
                 comp.reason = splitResult.reason;
