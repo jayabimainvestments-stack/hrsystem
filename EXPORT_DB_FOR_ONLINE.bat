@@ -13,7 +13,7 @@ echo Setting up export path...
 set EXPORT_PATH=%~dp0%EXPORT_FILE%
 
 echo Exporting database...
-"C:\Program Files\PostgreSQL\15\bin\pg_dump.exe" -U %DB_USER% %DB_NAME% > "%EXPORT_PATH%"
+"%~dp0pgsql\bin\pg_dump.exe" -U %DB_USER% -p 5433 %DB_NAME% > "%EXPORT_PATH%"
 
 if %ERRORLEVEL% EQU 0 (
     echo.
