@@ -232,7 +232,7 @@ const updateLeaveStatus = async (req, res) => {
                     WHERE employee_id = $1 
                     AND date >= $2::date 
                     AND date <= $3::date 
-                    AND status IN ('Present', 'Late')
+                    AND status IN ('Present', 'Incomplete')
                 `, [employeeId, leave.start_date, leave.end_date]);
                 workedDays = parseFloat(workedRes.rows[0].worked_days || 0);
 
@@ -244,7 +244,7 @@ const updateLeaveStatus = async (req, res) => {
                         WHERE employee_id = $1 
                         AND date >= $2::date 
                         AND date <= $3::date 
-                        AND status IN ('Present', 'Late')
+                        AND status IN ('Present', 'Incomplete')
                     `, [employeeId, leave.start_date, leave.end_date]);
                 }
             }

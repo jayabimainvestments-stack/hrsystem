@@ -297,7 +297,7 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
                 if (existingRes.rows.length === 0) throw new Error('Original attendance record missing');
                 const existing = existingRes.rows[0];
 
-                const isWorkingStatus = val.status === 'Present' || val.status === 'Late';
+                const isWorkingStatus = val.status === 'Present' || val.status === 'Incomplete';
                 let reclaimed = existing.leave_reclaimed;
 
                 // Leave Reconciliation Logic

@@ -214,9 +214,10 @@ const Payroll = () => {
 
     const filteredPayrolls = payrolls.filter(p => {
         const name = p.employee_name || '';
-        const month = p.month || '';
         const searchLower = search.toLowerCase();
-        return name.toLowerCase().includes(searchLower) || month.toLowerCase().includes(searchLower);
+        const matchesSearch = name.toLowerCase().includes(searchLower) || (p.month || '').toLowerCase().includes(searchLower);
+        const matchesMonth = !isAdmin || p.month === selectedMonth;
+        return matchesSearch && matchesMonth;
     });
 
     if (loading) return (
@@ -465,18 +466,20 @@ const Payroll = () => {
                                     </div>
                                     <div className="flex gap-4">
                                         {[
-                                            { label: 'Bank Export', fn: () => prompt("Enter Month (YYYY-MM):"), icon: CreditCard },
-                                            { label: 'Journal', fn: () => prompt("Enter Month (YYYY-MM):"), icon: FileText },
-                                            { label: 'Consolidated Sheet', fn: () => navigate('/payroll/consolidated-sheet'), icon: FileText },
-                                            { label: 'EPF Form C', fn: () => navigate('/payroll/epf-form-c'), icon: FileText, color: 'text-primary-600' },
-                                            { label: 'ETF Form R4', fn: () => navigate('/payroll/etf-form-r4'), icon: FileText, color: 'text-indigo-600' }
+                                            { label: 'Bank Export', endpoint: 'bank', icon: CreditCard },
+                                            { label: 'Journal', endpoint: 'journal', icon: FileText },
+                                            { label: 'Consolidated Sheet', navigate: '/payroll/consolidated-sheet', icon: FileText },
+                                            { label: 'EPF Form C', navigate: '/payroll/epf-form-c', icon: FileText, color: 'text-primary-600' },
+                                            { label: 'ETF Form R4', navigate: '/payroll/etf-form-r4', icon: FileText, color: 'text-indigo-600' }
                                         ].map((action, i) => (
                                             <button
                                                 key={i}
                                                 onClick={() => {
-                                                    const month = action.fn();
-                                                    const endpoint = action.label === 'Bank Export' ? 'bank' : 'journal';
-                                                    if (month) window.open(`${BASE_URL}/api/reports/payroll/export/${endpoint}?month=${month}`, '_blank');
+                                                    if (action.navigate) {
+                                                        navigate(action.navigate);
+                                                    } else {
+                                                        window.open(`${BASE_URL}/api/reports/payroll/export/${action.endpoint}?month=${selectedMonth}`, '_blank');
+                                                    }
                                                 }}
                                                 className="px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2 border-dashed"
                                             >
@@ -498,7 +501,7 @@ const Payroll = () => {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {rawLiabilities.filter(l => l.type !== 'Welfare 2%').slice(0, 8).map(liab => (
+                                            {rawLiabilities.filter(l => l.type !== 'Welfare 2%' && l.month === selectedMonth).map(liab => (
                                                 <tr key={liab.id} className="bg-white/5 backdrop-blur-md border border-white/5 rounded-2xl group/row hover:bg-white/10 transition-all">
                                                     <td className="px-6 py-5 rounded-l-2xl font-black text-sm text-slate-300">{liab.month}</td>
                                                     <td className="px-6 py-5">

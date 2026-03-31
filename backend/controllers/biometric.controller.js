@@ -63,7 +63,7 @@ const processPunch = async (req, res) => {
             const policy = policyRes.rows[0] || { work_start_time: '08:30:00' };
             const { calculateLateMinutes } = require('../utils/attendance.utils');
             const lateMinutes = calculateLateMinutes(punchTime, policy.work_start_time);
-            const statusToSet = lateMinutes > 0 ? 'Late' : 'Incomplete';
+            const statusToSet = 'Incomplete'; // Always Incomplete on first punch (as day is not finished)
 
             result = await db.query(
                 `INSERT INTO attendance (employee_id, date, clock_in, raw_clock_in, raw_clock_out, status, source, device_id, late_minutes)
@@ -140,8 +140,8 @@ const processPunch = async (req, res) => {
                          SET clock_out = GREATEST(COALESCE(clock_out, '00:00:00'), $1),
                              raw_clock_out = GREATEST(COALESCE(raw_clock_out, '00:00:00'), $1),
                              status = CASE 
-                                 WHEN status = 'Incomplete' AND $1 >= $3 THEN 'Present'
-                                 ELSE status 
+                                 WHEN (status = 'Incomplete' AND (late_minutes IS NULL OR late_minutes = 0)) AND $1 >= $3 THEN 'Present'
+                                 ELSE 'Incomplete' 
                              END,
                              updated_at = CURRENT_TIMESTAMP 
                          WHERE id = $2 RETURNING *`,
@@ -157,7 +157,7 @@ const processPunch = async (req, res) => {
                          SET clock_in = $1, 
                              raw_clock_in = COALESCE(raw_clock_in, $1),
                              raw_clock_out = GREATEST(COALESCE(raw_clock_out, '00:00:00'), $1),
-                             status = CASE WHEN $3 > 0 THEN 'Late' ELSE 'Incomplete' END,
+                             status = 'Incomplete',
                              late_minutes = $3,
                              updated_at = CURRENT_TIMESTAMP 
                          WHERE id = $2 RETURNING *`,
@@ -297,7 +297,7 @@ const bulkProcessPunches = async (req, res) => {
                 if (existingAttendance.rows.length === 0) {
                     // First punch -> Clock In
                     const lateMinutes = calculateLateMinutes(punchTimeStr, policy.work_start_time);
-                    const statusToSet = lateMinutes > 0 ? 'Late' : 'Incomplete';
+                    const statusToSet = 'Incomplete';
                     
                     await client.query(
                         `INSERT INTO attendance (employee_id, date, clock_in, raw_clock_in, raw_clock_out, status, source, device_id, late_minutes)
@@ -327,22 +327,21 @@ const bulkProcessPunches = async (req, res) => {
                             // This was an Absent/Leave placeholder. Treat this punch as Clock-In
                             clockIn = punchTimeStr;
                             lateMinutes = calculateLateMinutes(clockIn, policy.work_start_time);
-                            statusToSet = lateMinutes > 0 ? 'Late' : 'Incomplete';
+                            statusToSet = 'Incomplete';
                         } else {
                             // Already has clock_in. This is a Clock-Out update.
                             // If it was Incomplete, and this punch is valid clock-out, mark as Present (or Late if already late)
                             if (existing.status === 'Incomplete' && punchTimeStr >= policy.work_end_time) {
-                                // If it didn't have a late status, it becomes Present.
-                                // If it already had status from IN (though single punch is Incomplete), we check late minutes.
+                                // Only promote to Present if IN was also on-time
                                 const inLateMins = calculateLateMinutes(clockIn, policy.work_start_time);
-                                statusToSet = inLateMins > 0 ? 'Late' : 'Present';
+                                statusToSet = inLateMins > 0 ? 'Incomplete' : 'Present';
                             }
                         }
 
                         // Reconcile Leave Balance if status is now working
                         const { reconcileLeaveBalance } = require('../services/attendance.service');
                         let reclaimed = existing.leave_reclaimed;
-                        if ((statusToSet === 'Present' || statusToSet === 'Late') && !existing.leave_reclaimed) {
+                        if ((statusToSet === 'Present' || statusToSet === 'Incomplete') && !existing.leave_reclaimed) {
                             reclaimed = await reconcileLeaveBalance(client, employee.id, punchDate, statusToSet);
                         }
 

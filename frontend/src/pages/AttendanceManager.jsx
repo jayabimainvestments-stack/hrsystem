@@ -136,8 +136,8 @@ const AttendanceManager = () => {
             matchesStatus = isLateArrival(record.clock_in);
         } else if (statusSearch === 'Early Departure') {
             matchesStatus = isEarlyDeparture(record.clock_out);
-        } else if (statusSearch === 'Late') {
-            matchesStatus = isLateArrival(record.clock_in) || record.status === 'Late'; 
+        } else if (statusSearch === 'Incomplete') {
+            matchesStatus = record.status === 'Incomplete' || isLateArrival(record.clock_in) || isEarlyDeparture(record.clock_out);
         } else {
             matchesStatus = record.status === statusSearch;
         }
@@ -756,7 +756,7 @@ const AttendanceManager = () => {
                                                     <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${record.status === 'Present' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                                                         record.status === 'Absent' ? 'bg-red-50 text-red-600 border-red-100' :
                                                             record.status === 'Incomplete' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
-                                                                'bg-amber-50 text-amber-600 border-amber-100'
+                                                                'bg-slate-50 text-slate-600 border-slate-100'
                                                         }`}>
                                                         {record.status}
                                                     </span>

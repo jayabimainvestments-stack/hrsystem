@@ -29,7 +29,7 @@ const submitRequest = async (req, res) => {
 // @route   GET /api/financial/requests
 // @access  Private
 const getRequests = async (req, res) => {
-    const { type } = req.query;
+    const { type, month } = req.query;
     try {
         let query = `
             SELECT fr.*, u.name as requested_by_name 
@@ -37,10 +37,14 @@ const getRequests = async (req, res) => {
             JOIN users u ON fr.requested_by = u.id
         `;
         const params = [];
-
         if (type) {
-            query += ` WHERE fr.type = $1 `;
             params.push(type);
+            query += ` WHERE fr.type = $${params.length} `;
+        }
+
+        if (month) {
+            params.push(month);
+            query += ` ${params.length > 1 ? 'AND' : 'WHERE'} fr.month = $${params.length} `;
         }
 
         query += ` ORDER BY fr.created_at DESC `;

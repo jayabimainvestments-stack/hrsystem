@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { getPayrollDates } = require('../utils/payroll.utils');
 
 // @desc    Get manual deductions for a specific month
 // @route   GET /api/manual-deductions
@@ -11,6 +12,7 @@ const getManualDeductions = async (req, res) => {
     }
 
     try {
+        const { startDate, endDate } = await getPayrollDates(month);
         // 1. Get current policy rates for calculation
         const policyRes = await db.query('SELECT absent_day_amount, late_hourly_rate, absent_deduction_rate FROM attendance_policies WHERE id = 1');
         const policy = policyRes.rows[0];
@@ -42,7 +44,8 @@ const getManualDeductions = async (req, res) => {
                 ad.approved_by_1,
                 -- Return calculated values for reference
                 COALESCE(calc.absent_days, 0) as calc_absent_days,
-                COALESCE(calc.late_hours, 0) as calc_late_hours
+                COALESCE(calc.late_hours, 0) as calc_late_hours,
+                breakdown.list as details
             FROM employees e
             JOIN users u ON e.user_id = u.id
             LEFT JOIN attendance_deductions ad ON e.id = ad.employee_id AND ad.month = $1
@@ -62,8 +65,8 @@ const getManualDeductions = async (req, res) => {
                     SELECT employee_id, 
                            (COUNT(*) FILTER (WHERE status = 'Absent')) + (COUNT(*) FILTER (WHERE status = 'Incomplete' AND date < CURRENT_DATE) * 0.5) as absent_days,
                            ROUND(SUM(COALESCE(late_minutes, 0)) / 60.0 + SUM(CASE WHEN date < CURRENT_DATE THEN COALESCE(short_leave_hours, 0) ELSE 0 END), 2) as late_hours
-                    FROM attendance 
-                    WHERE date >= ($1 || '-01')::date AND date < ($1 || '-01')::date + interval '1 month'
+                    FROM attendance
+                    WHERE date >= $5::date AND date <= $6::date
                     GROUP BY employee_id
                 ) att ON e.id = att.employee_id
                 LEFT JOIN (
@@ -71,13 +74,44 @@ const getManualDeductions = async (req, res) => {
                            SUM(unpaid_days) as unpaid_days,
                            SUM(short_leave_hours) as short_leave_hours
                     FROM leaves
-                    WHERE status = 'Approved' AND start_date >= ($1 || '-01')::date AND start_date < ($1 || '-01')::date + interval '1 month'
+                    WHERE status = 'Approved' AND start_date >= $5::date AND start_date <= $6::date
                     GROUP BY user_id
                 ) l ON e.user_id = l.user_id
             ) calc ON e.id = calc.employee_id
+            LEFT JOIN LATERAL (
+                SELECT JSONB_AGG(d ORDER BY d.date) as list
+                FROM (
+                    -- Absences
+                    SELECT date::text as date, 'Absent' as reason, '1.0' as value, 'day' as unit
+                    FROM attendance
+                    WHERE employee_id = e.id AND date >= $5::date AND date <= $6::date AND status = 'Absent'
+                    UNION ALL
+                    -- Incomplete (Half days)
+                    SELECT date::text as date, 'Incomplete' as reason, '0.5' as value, 'day' as unit
+                    FROM attendance
+                    WHERE employee_id = e.id AND date >= $5::date AND date <= $6::date AND status = 'Incomplete'
+                    UNION ALL
+                    -- Late Minutes
+                    SELECT date::text as date, 'Late' as reason, CAST(late_minutes AS text) as value, 'mins' as unit
+                    FROM attendance
+                    WHERE employee_id = e.id AND date >= $5::date AND date <= $6::date AND late_minutes > 0
+                    UNION ALL
+                    -- Short Leave Hours
+                    SELECT date::text as date, 'Short Leave' as reason, CAST(short_leave_hours AS text) as value, 'hours' as unit
+                    FROM attendance
+                    WHERE employee_id = e.id AND date >= $5::date AND date <= $6::date AND short_leave_hours > 0
+                    UNION ALL
+                    -- Unpaid Leaves
+                    SELECT gs.date::date::text as date, 'Unpaid ' || l.leave_type as reason, '1.0' as value, 'day' as unit
+                    FROM leaves l
+                    CROSS JOIN LATERAL generate_series(l.start_date::timestamp, l.end_date::timestamp, '1 day'::interval) gs(date)
+                    WHERE l.user_id = e.user_id AND l.status = 'Approved' AND l.is_unpaid = TRUE
+                    AND gs.date::date >= $5::date AND gs.date::date <= $6::date
+                ) d
+            ) breakdown ON TRUE
             WHERE e.employment_status = 'Active' OR e.employment_status IS NULL
             ORDER BY u.name
-        `, [month, dayRate, hourRate, multiplier]);
+        `, [month, dayRate, hourRate, multiplier, startDate, endDate]);
 
         res.status(200).json(result.rows);
     } catch (error) {

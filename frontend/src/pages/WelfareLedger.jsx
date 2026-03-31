@@ -21,6 +21,7 @@ import {
 const WelfareLedger = () => {
     const [ledger, setLedger] = useState({ transactions: [], balance: 0 });
     const [loading, setLoading] = useState(true);
+    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [showExpenseModal, setShowExpenseModal] = useState(false);
     const [expenseForm, setExpenseForm] = useState({ amount: '', description: '', date: new Date().toISOString().split('T')[0] });
     const [saving, setSaving] = useState(false);
@@ -31,7 +32,7 @@ const WelfareLedger = () => {
     const fetchLedger = async () => {
         setLoading(true);
         try {
-            const { data } = await api.get('/welfare/ledger');
+            const { data } = await api.get(`/welfare/ledger?month=${selectedMonth}`);
             setLedger(data);
         } catch (error) {
             console.error("Error fetching ledger", error);
@@ -42,7 +43,7 @@ const WelfareLedger = () => {
 
     useEffect(() => {
         fetchLedger();
-    }, []);
+    }, [selectedMonth]);
 
     const handleAddExpense = async (e) => {
         e.preventDefault();
@@ -158,14 +159,25 @@ const WelfareLedger = () => {
                 {/* Ledger Table Section */}
                 <div className="card-premium p-0 overflow-hidden">
                     <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div className="relative w-full md:w-96">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                            <input
-                                className="w-full bg-slate-50 border-none rounded-xl pl-12 pr-4 py-3 font-semibold text-sm focus:ring-4 ring-primary-500/10 transition-all outline-none"
-                                placeholder="Search transactions..."
-                                value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
-                            />
+                        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+                            <div className="relative w-full md:w-72">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                <input
+                                    className="w-full bg-slate-50 border-none rounded-xl pl-12 pr-4 py-3 font-semibold text-sm focus:ring-4 ring-primary-500/10 transition-all outline-none"
+                                    placeholder="Search details..."
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                />
+                            </div>
+                            <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 w-full md:w-auto">
+                                <Calendar size={16} className="text-primary-500" />
+                                <input
+                                    type="month"
+                                    value={selectedMonth}
+                                    onChange={(e) => setSelectedMonth(e.target.value)}
+                                    className="bg-transparent border-none outline-none font-black text-xs text-slate-700 uppercase"
+                                />
+                            </div>
                         </div>
                         <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 px-4 py-2 rounded-lg">
                             <TrendingUp size={12} className="text-primary-500" />

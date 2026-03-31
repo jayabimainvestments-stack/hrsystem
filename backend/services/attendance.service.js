@@ -180,12 +180,18 @@ const processAttendanceFromPunches = async (client, employeeId, dateStr) => {
 
         const shortLeaveHours = parseFloat((earlyDepartureMinutes / 60).toFixed(2));
 
-        // 4. Status Determination
+        // 4. Status Determination (Strict Logic)
         let status = 'Incomplete';
         if (clockIn && clockOut) {
-            if (lateMinutes > 0) status = 'Late';
-            else status = 'Present';
-        } else if (clockIn) {
+            const isLate = lateMinutes > 0;
+            const isEarly = earlyDepartureMinutes > 0;
+
+            if (!isLate && !isEarly) {
+                status = 'Present';
+            } else {
+                status = 'Incomplete';
+            }
+        } else {
             status = 'Incomplete';
         }
 

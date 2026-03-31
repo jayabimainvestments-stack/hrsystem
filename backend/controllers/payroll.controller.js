@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { getPayrollDates } = require('../utils/payroll.utils');
 
 // Helper to update liabilities
 const updateLiability = async (client, month, type, amountDiff) => {
@@ -129,6 +130,7 @@ const createPayroll = async (req, res) => {
     const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
+        const { startDate, endDate } = await getPayrollDates(datePrefix);
 
         // 0. Fetch the Salary Catalog (All active components)
         const catalogRes = await client.query("SELECT * FROM salary_components WHERE status = 'Active'");
@@ -304,10 +306,8 @@ const createPayroll = async (req, res) => {
 
             // Fuel display: append liters & calculate dynamic split if applicable
             if (compName.includes('fuel') && quantity > 0) {
-                // Determine cycle dates for March 2026 (or relevant month)
-                // User requirement: Feb 25 - Mar 25
-                const fuelStartDate = (month === 'March' && processingYear == 2026) ? '2026-02-25' : `${datePrefix}-01`;
-                const fuelEndDate = (month === 'March' && processingYear == 2026) ? '2026-03-25' : new Date(processingYear, monthNum, 0).toISOString().split('T')[0];
+                const fuelStartDate = startDate;
+                const fuelEndDate = endDate;
 
                 const splitResult = await calculateSplitFuelAllowance(client, quantity, fuelStartDate, fuelEndDate);
                 amount = splitResult.totalAmount;
@@ -1123,6 +1123,7 @@ const getPayrollPreview = async (req, res) => {
     const datePrefix = `${processingYear}-${monthNum}`;
 
     try {
+        const { startDate, endDate } = await getPayrollDates(datePrefix);
         // 0. Fetch the Salary Catalog (All active components)
         const catalogRes = await db.query("SELECT * FROM salary_components WHERE status = 'Active'");
         const catalog = catalogRes.rows;
@@ -1279,17 +1280,8 @@ const getPayrollPreview = async (req, res) => {
 
                 // Fuel & Performance Display Logic
                 if (compName.includes('fuel') && quantity > 0) {
-                    // ENTERPRISE RULE: March 2026 Period is Feb 25th to March 25th
-                    let fuelStartDate, fuelEndDate;
-                    if (month === 'March' && processingYear == 2026) {
-                        fuelStartDate = '2026-02-25';
-                        fuelEndDate = '2026-03-25';
-                    } else {
-                        // Standard Period: 1st to Last of Month
-                        fuelStartDate = `${datePrefix}-01`;
-                        const lastDay = new Date(processingYear, monthNum, 0);
-                        fuelEndDate = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
-                    }
+                    const fuelStartDate = startDate;
+                    const fuelEndDate = endDate;
 
                     const splitResult = await calculateSplitFuelAllowance(db, quantity, fuelStartDate, fuelEndDate);
                 amount = splitResult.totalAmount;
@@ -1490,6 +1482,7 @@ const getPayrollReadiness = async (req, res) => {
     const datePrefix = `${year}-${monthNum}`;
 
     try {
+        const { startDate, endDate } = await getPayrollDates(datePrefix);
         // 1. Employee Context
         const empCountRes = await db.query("SELECT COUNT(*) FROM employees WHERE employment_status = 'Active'");
         const totalEmployees = parseInt(empCountRes.rows[0].count);
@@ -1529,14 +1522,13 @@ const getPayrollReadiness = async (req, res) => {
         };
 
         // 5. Loan Installment Status
-        // Check for active loans that should have a payment this month
         const loanRes = await db.query(`
             SELECT COUNT(*) FROM employee_loans 
             WHERE status = 'Approved'
             AND start_date <= $1::date
             AND end_date >= $1::date
             AND installments_paid < num_installments
-        `, [`${datePrefix}-01`]);
+        `, [startDate]);
         const activeLoans = parseInt(loanRes.rows[0].count);
 
         const loanPaymentRes = await db.query(

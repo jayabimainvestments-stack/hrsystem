@@ -468,7 +468,7 @@ const bulkLogAttendance = async (req, res) => {
                 [employee_id, date]
             );
 
-            const isWorkingStatus = statusToSet === 'Present' || statusToSet === 'Late';
+            const isWorkingStatus = statusToSet === 'Present' || statusToSet === 'Incomplete';
             let reclaimed = false;
 
             if (existing.rows.length > 0) {

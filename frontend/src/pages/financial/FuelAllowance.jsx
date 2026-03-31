@@ -14,6 +14,7 @@ const FuelAllowance = () => {
     const [splitResults, setSplitResults] = useState({}); // { empId: { totalAmount, reason } }
     const [error, setError] = useState(null);
     const [isScraping, setIsScraping] = useState(false);
+    const [historyMonth, setHistoryMonth] = useState(new Date().toISOString().slice(0, 7));
     const [calculating, setCalculating] = useState(false);
     const [selectedBreakdown, setSelectedBreakdown] = useState(null); // { name, data: [] }
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -57,11 +58,14 @@ const FuelAllowance = () => {
 
     useEffect(() => {
         fetchEmployees();
-        fetchRequests();
         fetchPolicy();
         fetchMonthStatus();
         fetchFuelHistory();
     }, [month]);
+
+    useEffect(() => {
+        fetchRequests();
+    }, [historyMonth]);
 
     // Recalculate split values when allocations or month changes
     useEffect(() => {
@@ -142,7 +146,7 @@ const FuelAllowance = () => {
 
     const fetchRequests = async () => {
         try {
-            const { data } = await api.get('/financial/requests?type=Fuel Allowance');
+            const { data } = await api.get(`/financial/requests?type=Fuel Allowance&month=${historyMonth}`);
             setRequests(data);
         } catch (error) {
             console.error("Failed to fetch requests", error);
@@ -489,10 +493,32 @@ const FuelAllowance = () => {
 
             {activeTab === 'history' && (
                 <div className="space-y-6">
+                    {/* History Filter */}
+                    <div className="flex justify-between items-center bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-slate-900 text-white rounded-2xl">
+                                <History size={20} />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest leading-none mb-1">Request History</h3>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Filter by pay period</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3 bg-slate-50 px-5 py-3 rounded-2xl border border-slate-100">
+                            <Calendar size={16} className="text-blue-600" />
+                            <input
+                                type="month"
+                                value={historyMonth}
+                                onChange={(e) => setHistoryMonth(e.target.value)}
+                                className="bg-transparent border-none outline-none font-black text-xs text-slate-700 uppercase"
+                            />
+                        </div>
+                    </div>
+
                     {requests.length === 0 ? (
                         <div className="text-center py-20 bg-white rounded-[2.5rem] border border-slate-100 border-dashed">
                             <History size={48} className="mx-auto text-slate-200 mb-4" />
-                            <p className="text-slate-400 font-medium">No requests found.</p>
+                            <p className="text-slate-400 font-medium font-bold uppercase tracking-widest text-[10px]">No requests found for {historyMonth}</p>
                         </div>
                     ) : (
                         requests.map((req) => (

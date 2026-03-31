@@ -16,6 +16,7 @@ const AttendanceAllowance = () => {
     const [ignoring, setIgnoring] = useState(null);
     const [monthSummary, setMonthSummary] = useState(null);
     const [showIgnored, setShowIgnored] = useState(false);
+    const [expandedEmp, setExpandedEmp] = useState(null);
 
     useEffect(() => {
         fetchDeductions();
@@ -227,8 +228,37 @@ const AttendanceAllowance = () => {
                                 employees.filter(e => showIgnored || e.status !== 'Ignored').map((emp) => (
                                     <tr key={emp.employee_id} className={`hover:bg-blue-50/30 transition-colors group ${emp.status === 'Ignored' ? 'opacity-50' : ''}`}>
                                         <td className="p-6">
-                                            <div className="font-bold text-slate-700">{emp.employee_name}</div>
-                                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{emp.emp_code}</div>
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <div className="font-bold text-slate-700">{emp.employee_name}</div>
+                                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{emp.emp_code}</div>
+                                                </div>
+                                                {emp.details && emp.details.length > 0 && (
+                                                    <button
+                                                        onClick={() => setExpandedEmp(expandedEmp === emp.employee_id ? null : emp.employee_id)}
+                                                        className={`p-1.5 rounded-lg transition-all ${expandedEmp === emp.employee_id ? 'bg-rose-100 text-rose-600 shadow-sm' : 'text-slate-300 hover:text-rose-600 hover:bg-rose-50'}`}
+                                                        title="View Calculation Breakdown"
+                                                    >
+                                                        {expandedEmp === emp.employee_id ? <EyeOff size={14} /> : <Eye size={14} />}
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {/* Expanded Details */}
+                                            {expandedEmp === emp.employee_id && emp.details && (
+                                                <div className="mt-3 p-3 bg-slate-50/50 rounded-2xl border border-slate-100 space-y-1 animate-in slide-in-from-top-2 duration-300 overflow-hidden">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Calculation Breakdown</p>
+                                                    {emp.details.map((d, i) => (
+                                                        <div key={i} className="flex justify-between items-center text-[10px] py-1.5 border-b border-slate-200/50 last:border-0 hover:bg-white/80 px-2 rounded-lg transition-colors">
+                                                            <span className="font-bold text-slate-500 w-16">{new Date(d.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
+                                                            <span className="font-medium text-slate-600 flex-1">{d.reason}</span>
+                                                            <span className="font-black text-rose-600 bg-rose-50/80 px-2.5 py-0.5 rounded-md border border-rose-100/50 ml-2 shadow-sm">
+                                                                {d.value} {d.unit}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </td>
 
                                         {/* Input: Days */}

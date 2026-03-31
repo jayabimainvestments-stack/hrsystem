@@ -4,8 +4,17 @@ const db = require('../config/db');
 // @route   GET /api/welfare/ledger
 // @access  Private (Admin/HR)
 const getLedger = async (req, res) => {
+    const { month } = req.query; // YYYY-MM
     try {
-        const result = await db.query('SELECT * FROM welfare_ledger ORDER BY transaction_date DESC, created_at DESC');
+        let query = 'SELECT * FROM welfare_ledger ';
+        const params = [];
+        if (month) {
+            query += " WHERE TO_CHAR(transaction_date, 'YYYY-MM') = $1 ";
+            params.push(month);
+        }
+        query += ' ORDER BY transaction_date DESC, created_at DESC';
+
+        const result = await db.query(query, params);
 
         // Calculate balance
         const balanceRes = await db.query(`

@@ -110,7 +110,7 @@ const calculateDeductions = async (req, res) => {
                 FROM attendance
                 WHERE employee_id = $1
                 AND date >= $2 AND date <= $3
-                AND status IN ('Present', 'Late', 'Half Day', 'Incomplete')
+                AND status IN ('Present', 'Incomplete')
             `, [emp.id, startDate, endDate]);
 
             const lateHours = parseFloat(lateRes.rows[0].late_hours || 0) + parseFloat(lateRes.rows[0].early_hours || 0);
