@@ -753,10 +753,14 @@ const AttendanceManager = () => {
                                                     </div>
                                                 </td>
                                                 <td className="px-8 py-6">
-                                                    <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${record.status === 'Present' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                                                        record.status === 'Absent' ? 'bg-red-50 text-red-600 border-red-100' :
-                                                            record.status === 'Incomplete' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
-                                                                'bg-slate-50 text-slate-600 border-slate-100'
+                                                    <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
+                                                        record.status === 'Present' 
+                                                            ? (isLateArrival(record.clock_in) || isEarlyDeparture(record.clock_out) 
+                                                                ? 'bg-red-50 text-red-600 border-red-100' 
+                                                                : 'bg-emerald-50 text-emerald-600 border-emerald-100')
+                                                            : record.status === 'Absent' ? 'bg-red-50 text-red-600 border-red-100' :
+                                                                record.status === 'Incomplete' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                                                                    'bg-slate-50 text-slate-600 border-slate-100'
                                                         }`}>
                                                         {record.status}
                                                     </span>
@@ -841,12 +845,16 @@ const AttendanceManager = () => {
                                                 </td>
                                                 <td className="px-8 py-6">
                                                     <div className="flex flex-col gap-1">
-                                                        <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all duration-300 w-fit ${record.status === 'Present' ? 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100/50' :
-                                                            record.status === 'Late' ? 'bg-amber-50 text-amber-600 border-amber-100' :
-                                                                record.status === 'Absent' ? 'bg-red-50 text-red-600 border-red-100' :
-                                                                    record.status === 'Incomplete' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
-                                                                        record.status?.startsWith('Pending') ? 'bg-slate-50 text-slate-500 border-slate-200 border-dashed' :
-                                                                            'bg-blue-50 text-blue-600 border-blue-100' // Approved Leave Types
+                                                        <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all duration-300 w-fit ${
+                                                            record.status === 'Present' 
+                                                                ? (isLateArrival(record.clock_in) || isEarlyDeparture(record.clock_out)
+                                                                    ? 'bg-red-50 text-red-600 border-red-100'
+                                                                    : 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100/50')
+                                                                : record.status === 'Late' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                                                    record.status === 'Absent' ? 'bg-red-50 text-red-600 border-red-100' :
+                                                                        record.status === 'Incomplete' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                                                                            record.status?.startsWith('Pending') ? 'bg-slate-50 text-slate-500 border-slate-200 border-dashed' :
+                                                                                'bg-blue-50 text-blue-600 border-blue-100' // Approved Leave Types
                                                             }`}>
                                                             {record.status}
                                                         </span>
@@ -1062,10 +1070,14 @@ const AttendanceManager = () => {
                                                         </div>
                                                     </td>
                                                     <td className="px-8 py-6">
-                                                        <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${record.status === 'Present' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                                                            record.status === 'Absent' ? 'bg-red-50 text-red-600 border-red-100' :
-                                                                record.status === 'Incomplete' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
-                                                                    'bg-amber-50 text-amber-600 border-amber-100'
+                                                        <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
+                                                            record.status === 'Present' 
+                                                                ? (isLateArrival(record.clock_in) || isEarlyDeparture(record.clock_out)
+                                                                    ? 'bg-red-50 text-red-600 border-red-100'
+                                                                    : 'bg-emerald-50 text-emerald-600 border-emerald-100')
+                                                                : record.status === 'Absent' ? 'bg-red-50 text-red-600 border-red-100' :
+                                                                    record.status === 'Incomplete' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                                                                        'bg-amber-50 text-amber-600 border-amber-100'
                                                             }`}>
                                                             {record.status}
                                                         </span>

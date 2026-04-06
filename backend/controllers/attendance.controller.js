@@ -40,12 +40,9 @@ const logAttendance = async (req, res) => {
 
         let statusToSet = status;
         if (clock_in && clock_out) {
-            // Status is Present ONLY if both punches exist AND no lateness/early departure
-            if (lateMinutes <= 0 && earlyDepartureMinutes <= 0) {
-                statusToSet = 'Present';
-            } else {
-                statusToSet = 'Incomplete';
-            }
+            // Updated: Status is Present if both punches exist. 
+            // Lateness is tracked in late_minutes, but shouldn't trigger 'Incomplete' (which causes 0.5 day penalty)
+            statusToSet = 'Present';
         } else if (clock_in || clock_out) {
             statusToSet = 'Incomplete';
         } else {
@@ -151,88 +148,42 @@ const getMyAttendance = async (req, res) => {
 const getAttendance = async (req, res) => {
     const { date, employee_id, startDate, endDate, department } = req.query;
 
-    // Comprehensive spectrum query: Union physical logs with approved leave periods
-    // Priority: Approved leaves override physical absence records
+    // Direct Materialized Query: Read directly from physical attendance logs.
+    // Leaves are now expected to be materialized into this table.
     let query = `
-        SELECT * FROM (
-            -- Physical Attendance Logs (excluding absences that have approved leaves)
-            SELECT 
-                a.id::text, a.employee_id, a.date::date, 
-                a.clock_in::text, a.clock_out::text, 
-                a.raw_clock_in::text, a.raw_clock_out::text,
-                a.status, a.source, 
-                e.designation, u.name as employee_name, e.department
-            FROM attendance a
-            JOIN employees e ON a.employee_id = e.id
-            JOIN users u ON e.user_id = u.id
-            WHERE NOT (
-                a.status = 'Absent' 
-                AND EXISTS (
-                    SELECT 1 FROM leaves l
-                    JOIN employees e2 ON e2.user_id = l.user_id
-                    WHERE e2.id = a.employee_id
-                    AND l.status IN ('Approved', 'Pending')
-                    AND a.date >= l.start_date::date
-                    AND a.date <= l.end_date::date
-                )
-            )
-            
-            UNION ALL
-            
-            -- Authorized Absence Spectrum (Approved or Pending Leaves)
-            SELECT 
-                l.id::text, e.id as employee_id, gs.date::date as date, 
-                COALESCE(l.start_time::text, '--:--') as clock_in, 
-                COALESCE(l.end_time::text, '--:--') as clock_out, 
-                null as raw_clock_in, 
-                null as raw_clock_out,
-                CASE 
-                    WHEN l.status = 'Pending' THEN 'Pending ' || l.leave_type 
-                    ELSE l.leave_type 
-                END as status, 
-                'Authorized Leave' as source,
-                e.designation, u.name as employee_name, e.department
-            FROM leaves l
-            JOIN users u ON l.user_id = u.id
-            JOIN employees e ON e.user_id = u.id
-            CROSS JOIN LATERAL generate_series(l.start_date::timestamp, l.end_date::timestamp, '1 day'::interval) gs(date)
-            WHERE l.status IN ('Approved', 'Pending')
-            -- Exclude from spectrum only if it's a full-day leave AND a physical record exists
-            -- Keep Half Day and Short Leave visible even if physical attendance exists
-            AND (
-                UPPER(TRIM(l.leave_type)) IN ('HALF DAY', 'SHORT LEAVE')
-                OR NOT EXISTS (
-                    SELECT 1 FROM attendance att 
-                    WHERE att.employee_id = e.id 
-                    AND att.date = gs.date::date
-                    AND att.status != 'Absent'
-                )
-            )
-        ) spectrum
+        SELECT 
+            a.id::text, a.employee_id, a.date::date, 
+            a.clock_in::text, a.clock_out::text, 
+            a.raw_clock_in::text, a.raw_clock_out::text,
+            a.status, a.source, 
+            e.designation, u.name as employee_name, e.department
+        FROM attendance a
+        JOIN employees e ON a.employee_id = e.id
+        JOIN users u ON e.user_id = u.id
         WHERE 1=1
     `;
     const params = [];
 
     if (date) {
         params.push(date);
-        query += ` AND spectrum.date = $${params.length}`;
+        query += ` AND a.date = $${params.length}`;
     } else if (startDate && endDate) {
         const startIdx = params.length + 1;
         const endIdx = params.length + 2;
         params.push(startDate, endDate);
-        query += ` AND spectrum.date BETWEEN $${startIdx} AND $${endIdx}`;
+        query += ` AND a.date BETWEEN $${startIdx} AND $${endIdx}`;
     }
 
     if (employee_id) {
         params.push(employee_id);
-        query += ` AND spectrum.employee_id = $${params.length}`;
+        query += ` AND a.employee_id = $${params.length}`;
     }
     if (department) {
         params.push(department);
-        query += ` AND spectrum.department = $${params.length}`;
+        query += ` AND e.department = $${params.length}`;
     }
 
-    query += ` ORDER BY spectrum.date DESC, spectrum.employee_name ASC`;
+    query += ` ORDER BY a.date DESC, u.name ASC`;
 
     try {
         const result = await db.query(query, params);
@@ -290,11 +241,7 @@ const updateAttendance = async (req, res) => {
 
         let statusToSet = status;
         if (clock_in && clock_out) {
-            if (lateMinutes <= 0 && shortLeaveHours <= 0) {
-                statusToSet = 'Present';
-            } else {
-                statusToSet = 'Incomplete';
-            }
+            statusToSet = 'Present';
         } else if (clock_in || clock_out) {
             statusToSet = 'Incomplete';
         } else {
@@ -450,12 +397,7 @@ const bulkLogAttendance = async (req, res) => {
 
             let statusToSet = status;
             if (clock_in && clock_out) {
-                const depMin = (policy && clock_out) ? calculateEarlyDepartureMinutes(clock_out, policy.work_end_time) : 0;
-                if (lateMinutes <= 0 && depMin <= 0) {
-                    statusToSet = 'Present';
-                } else {
-                    statusToSet = 'Incomplete';
-                }
+                statusToSet = 'Present';
             } else if (clock_in || clock_out) {
                 statusToSet = 'Incomplete';
             } else {

@@ -140,8 +140,8 @@ const processPunch = async (req, res) => {
                          SET clock_out = GREATEST(COALESCE(clock_out, '00:00:00'), $1),
                              raw_clock_out = GREATEST(COALESCE(raw_clock_out, '00:00:00'), $1),
                              status = CASE 
-                                 WHEN (status = 'Incomplete' AND (late_minutes IS NULL OR late_minutes = 0)) AND $1 >= $3 THEN 'Present'
-                                 ELSE 'Incomplete' 
+                                 WHEN status = 'Incomplete' THEN 'Present'
+                                 ELSE status 
                              END,
                              updated_at = CURRENT_TIMESTAMP 
                          WHERE id = $2 RETURNING *`,
@@ -332,9 +332,7 @@ const bulkProcessPunches = async (req, res) => {
                             // Already has clock_in. This is a Clock-Out update.
                             // If it was Incomplete, and this punch is valid clock-out, mark as Present (or Late if already late)
                             if (existing.status === 'Incomplete' && punchTimeStr >= policy.work_end_time) {
-                                // Only promote to Present if IN was also on-time
-                                const inLateMins = calculateLateMinutes(clockIn, policy.work_start_time);
-                                statusToSet = inLateMins > 0 ? 'Incomplete' : 'Present';
+                                statusToSet = 'Present';
                             }
                         }
 
@@ -447,13 +445,21 @@ const triggerDeviceSync = async (req, res) => {
 };
 
 const runAutomatedDailyInit = async (customDate = null) => {
+    let client;
     try {
-        const client = await db.pool.connect();
+        client = await db.pool.connect();
         try {
             await client.query('BEGIN');
 
-            // Determine target date (YYYY-MM-DD)
-            const targetDate = customDate || new Date().toISOString().split('T')[0];
+            // Determine target date explicitly in Asia/Colombo time (UTC+05:30)
+            let targetDate;
+            if (customDate) {
+                targetDate = customDate;
+            } else {
+                // toLocaleDateString with 'en-CA' always returns YYYY-MM-DD
+                targetDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
+            }
+
             const d = new Date(targetDate);
             const dayOfWeek = d.getDay();
 
@@ -463,46 +469,62 @@ const runAutomatedDailyInit = async (customDate = null) => {
                 return { message: 'Skipping weekend initialization', date: targetDate };
             }
 
-            // Skip public/company holidays
-            const holidayCheck = await client.query('SELECT * FROM company_holidays WHERE date = $1', [targetDate]);
-            if (holidayCheck.rows.length > 0) {
-                await client.query('ROLLBACK');
-                return { message: 'Skipping holiday initialization', date: targetDate, holiday: holidayCheck.rows[0].name };
-            }
+            // Check for public/company holidays
+            const hols = await client.query('SELECT name FROM company_holidays WHERE date = $1', [targetDate]);
+            const isHoliday = hols.rows.length > 0;
+            const holidayName = isHoliday ? hols.rows[0].name : null;
 
             // Get all active employees
             const empRes = await client.query('SELECT id FROM employees WHERE employment_status = \'Active\'');
             const employees = empRes.rows;
 
+            if (employees.length === 0) {
+                await client.query('ROLLBACK');
+                return { message: 'No active employees found to initialize', date: targetDate };
+            }
+
             let created = 0;
             let skipped = 0;
 
             for (const emp of employees) {
+                // If it's a holiday, status is 'Holiday'. Otherwise it's 'Absent'.
+                const status = isHoliday ? 'Holiday' : 'Absent';
+                const source = isHoliday ? `Company Holiday: ${holidayName}` : 'System Sync';
+
                 // Check if record exists
                 const exists = await client.query('SELECT id FROM attendance WHERE employee_id = $1 AND date = $2', [emp.id, targetDate]);
                 
                 if (exists.rows.length === 0) {
-                    // Create Absent record
                     await client.query(
                         `INSERT INTO attendance (employee_id, date, status, source)
-                         VALUES ($1, $2, 'Absent', 'System Sync')`,
-                        [emp.id, targetDate]
+                         VALUES ($1, $2, $3, $4)`,
+                        [emp.id, targetDate, status, source]
                     );
                     created++;
+                } else if (isHoliday) {
+                    // Update to 'Holiday' if it was 'Absent' but now recognized as holiday
+                    await client.query(
+                        `UPDATE attendance SET status = $1, source = $2 WHERE employee_id = $3 AND date = $4 AND status = 'Absent'`,
+                        [status, source, emp.id, targetDate]
+                    );
+                    skipped++;
                 } else {
                     skipped++;
                 }
             }
 
             await client.query('COMMIT');
-            console.log(`[BIOMETRIC] Daily Init for ${targetDate}: ${created} created, ${skipped} skipped.`);
-            return { message: 'Daily initialization complete', created, skipped, date: targetDate };
+            return { 
+                message: isHoliday ? `Initialized ${created} as Holiday, updated ${skipped}` : `Initialized ${created} as Absent, skipped ${skipped}`, 
+                date: targetDate, 
+                holiday: holidayName 
+            };
 
         } catch (error) {
-            await client.query('ROLLBACK');
+            if (client) await client.query('ROLLBACK');
             throw error;
         } finally {
-            client.release();
+            if (client) client.release();
         }
     } catch (error) {
         console.error('[BIOMETRIC_AUTO_INIT_ERROR]', error);

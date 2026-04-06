@@ -1,9 +1,10 @@
 const { Client } = require('pg');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 async function runVerification() {
     const client = new Client({
-        connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/hr_db'
+        connectionString: process.env.DATABASE_URL
     });
 
     try {

@@ -268,19 +268,74 @@ const updateLeaveStatus = async (req, res) => {
                 // For now, let's allow approval even if balance record is missing to avoid blocking HR.
             }
 
-            // Delete absence records for the approved leave period
+            // Delete absence records AND materialize leave records
             const empResInApproval = await db.query('SELECT id FROM employees WHERE user_id = $1', [leave.user_id]);
             if (empResInApproval.rows.length > 0) {
                 const employeeId = empResInApproval.rows[0].id;
-                const deleteResult = await db.query(`
-                    DELETE FROM attendance 
-                    WHERE employee_id = $1 
-                    AND date >= $2::date 
-                    AND date <= $3::date 
-                    AND status = 'Absent'
-                `, [employeeId, leave.start_date, leave.end_date]);
 
-                console.log(`Deleted ${deleteResult.rowCount} absence record(s) for approved leave (Employee: ${employeeId}, Dates: ${leave.start_date} to ${leave.end_date})`);
+                // Materialize the leave into the attendance table
+                // Generate all dates between start_date and end_date
+                // ⚠️ FIX: Use string-based date extraction to avoid UTC/timezone shift.
+                // DB returns dates as '2026-04-02' strings (via ::text cast) — parse directly.
+                const startDateStr = typeof leave.start_date === 'string'
+                    ? leave.start_date.split('T')[0]
+                    : leave.start_date.toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
+                const endDateStr = typeof leave.end_date === 'string'
+                    ? leave.end_date.split('T')[0]
+                    : leave.end_date.toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
+
+                // Build date range using plain string arithmetic (no Date TZ issues)
+                const dateRange = [];
+                let cur = new Date(startDateStr + 'T12:00:00Z'); // noon UTC — safe for all TZ
+                const endCur = new Date(endDateStr + 'T12:00:00Z');
+                while (cur <= endCur) {
+                    dateRange.push(cur.toISOString().split('T')[0]);
+                    cur.setUTCDate(cur.getUTCDate() + 1);
+                }
+
+                for (const dateStr of dateRange) {
+                    
+                    const existingAtt = await db.query(
+                        'SELECT id, status FROM attendance WHERE employee_id = $1 AND date = $2',
+                        [employeeId, dateStr]
+                    );
+
+                    let shouldInsert = false;
+                    let shouldUpdate = false;
+                    let existingId = null;
+
+                    if (existingAtt.rows.length === 0) {
+                        shouldInsert = true;
+                    } else {
+                        const existingRecord = existingAtt.rows[0];
+                        existingId = existingRecord.id;
+                        // Avoid overwriting a physical 'Present' punch unless it's a conflict resolution rule.
+                        // Standard rule: Approved Leave overrides 'Absent' or existing 'Leave'
+                        if (existingRecord.status === 'Absent' || existingRecord.status === 'Leave') {
+                            shouldUpdate = true;
+                        } else if (existingRecord.status === 'Incomplete') {
+                            // If they are incomplete but applied for a leave, we update it
+                            shouldUpdate = true;
+                        }
+                    }
+
+                    if (shouldInsert) {
+                        await db.query(`
+                            INSERT INTO attendance (employee_id, date, status, source)
+                            VALUES ($1, $2, 'Leave', 'Authorized Leave')
+                        `, [employeeId, dateStr]);
+                    } else if (shouldUpdate) {
+                        await db.query(`
+                            UPDATE attendance 
+                            SET status = 'Leave', source = 'Authorized Leave'
+                            WHERE id = $1
+                        `, [existingId]);
+                    }
+
+                    d.setUTCDate(d.getUTCDate() + 1);
+                }
+
+                console.log(`Materialized Approved Leave into attendance table for Employee: ${employeeId}, Dates: ${leave.start_date} to ${leave.end_date}`);
             }
         }
 
