@@ -145,7 +145,7 @@ const processPunch = async (req, res) => {
                              END,
                              updated_at = CURRENT_TIMESTAMP 
                          WHERE id = $2 RETURNING *`,
-                        [punchTime, existing.id, policy.work_end_time]
+                        [punchTime, existing.id]
                     );
                     console.log(`[BIOMETRIC] Employee ${employee.id} Clocked-Out/Updated at ${punchTime}`);
                 } else {
