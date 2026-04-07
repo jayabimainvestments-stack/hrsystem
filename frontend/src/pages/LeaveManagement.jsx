@@ -237,13 +237,29 @@ const LeaveManagement = () => {
                 </div>
 
                 {/* Attendance Anomalies Section */}
-                {attendance.some(a => a.status === 'Absent' || a.status === 'Late') && (
+                {attendance.some(a => {
+                    if (a.status === 'Absent' || a.status === 'Late') return true;
+                    if (a.status === 'Incomplete') {
+                        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
+                        const attDateStr = new Date(a.date).toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
+                        return attDateStr < todayStr;
+                    }
+                    return false;
+                }) && (
                     <div className="mb-10">
                         <h2 className="text-xl font-black text-slate-900 tracking-tight mb-6 flex items-center gap-3">
                             <Clock className="text-amber-500" size={20} /> Recent Absences / Late Arrivals
                         </h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {attendance.filter(a => a.status === 'Absent' || a.status === 'Late').slice(0, 6).map(record => (
+                            {attendance.filter(a => {
+                                if (a.status === 'Absent' || a.status === 'Late') return true;
+                                if (a.status === 'Incomplete') {
+                                    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
+                                    const attDateStr = new Date(a.date).toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
+                                    return attDateStr < todayStr;
+                                }
+                                return false;
+                            }).map(record => (
                                 <div key={record.id} className={`p-6 rounded-[2rem] border flex items-center justify-between ${record.status === 'Absent' ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'
                                     }`}>
                                     <div>
@@ -251,7 +267,7 @@ const LeaveManagement = () => {
                                             }`}>{record.status}</p>
                                         <p className="text-lg font-bold text-slate-900">{new Date(record.date).toLocaleDateString()}</p>
                                         <p className="text-xs text-slate-500 font-medium">
-                                            {record.status === 'Late' ? `${record.late_minutes}m Late` : 'Recorded as Absent'}
+                                            {record.status === 'Late' ? `${record.late_minutes}m Late` : record.status === 'Incomplete' ? 'Incomplete Attendance' : 'Recorded as Absent'}
                                         </p>
                                     </div>
                                     <button

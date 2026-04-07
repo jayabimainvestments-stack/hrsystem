@@ -118,8 +118,8 @@ const getMyAttendance = async (req, res) => {
             dateFilter = 'AND a.date >= $2 AND a.date <= $3';
             params.push(startDate, endDate);
         } else {
-            // Default: Last 30 days
-            dateFilter = "AND a.date >= CURRENT_DATE - INTERVAL '30 days'";
+            // Default: Last 45 days (coincides with full monthly payroll cycles)
+            dateFilter = "AND a.date >= CURRENT_DATE - INTERVAL '45 days'";
         }
 
         const query = `
