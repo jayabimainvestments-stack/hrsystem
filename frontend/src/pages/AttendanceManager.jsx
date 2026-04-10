@@ -69,8 +69,9 @@ const AttendanceManager = () => {
     const [employees, setEmployees] = useState([]);
     const [devices, setDevices] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    const [startDate, setStartDate] = useState(todayStr);
+    const [endDate, setEndDate] = useState(todayStr);
 
     const [historyEmpId, setHistoryEmpId] = useState('');
     const [deptFilter, setDeptFilter] = useState('');

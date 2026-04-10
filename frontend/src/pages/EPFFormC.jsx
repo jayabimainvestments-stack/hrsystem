@@ -37,10 +37,19 @@ const EPFFormC = () => {
     );
 
     const [yyyy, mm] = month.split('-');
+    
+    // Split records into pages (max 15 records per page, standard for EPF C Form)
+    const records = data?.data || [];
+    const CHUNK_SIZE = 15; 
+    const pages = [];
+    for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+        pages.push(records.slice(i, i + CHUNK_SIZE));
+    }
+    if (pages.length === 0) pages.push([]);
 
     return (
         <div className="min-h-screen bg-[#f1f5f9] print:bg-white pb-20 font-serif overflow-x-auto text-black">
-            <div className="print:hidden">
+            <div className="print:hidden relative z-50">
                 <Navbar />
                 <div className="bg-slate-900 pt-20 pb-10 px-6">
                     <div className="max-w-[1000px] mx-auto flex justify-between items-end">
@@ -54,7 +63,7 @@ const EPFFormC = () => {
                             <h1 className="text-3xl font-black text-white uppercase tracking-tighter font-sans">
                                 EPF <span className="text-primary-500">Official Form C</span>
                             </h1>
-                            <p className="text-slate-400 text-sm font-sans">Thin-Line A4 Optimized Replica</p>
+                            <p className="text-slate-400 text-sm font-sans">Exact Background Overlay Printout</p>
                         </div>
                         <div className="flex items-center gap-4 bg-white/5 p-2 rounded-xl border border-white/10">
                             <input
@@ -67,191 +76,156 @@ const EPFFormC = () => {
                                 onClick={handlePrint}
                                 className="bg-primary-600 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-primary-700 transition-all font-sans"
                             >
-                                <Printer size={16} /> Print A4 Form
+                                <Printer size={16} /> Print Official Form
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <main className="max-w-[1000px] mx-auto p-4 md:p-8 print:p-0 mt-4 print:mt-0">
-                <div className="bg-white p-10 print:p-6 shadow-2xl print:shadow-none min-h-[1050px] border border-slate-200 print:border-none relative">
+            <main className="max-w-[1000px] mx-auto mt-8 flex flex-col items-center gap-12 print:gap-0 print:mt-0">
+                {pages.map((pageRecords, pageIndex) => {
+                    // Calculate Page Totals
+                    const pageTotal20 = pageRecords.reduce((acc, r) => acc + (r.total_20 || 0), 0);
+                    const pageEmployer12 = pageRecords.reduce((acc, r) => acc + (r.employer_12 || 0), 0);
+                    const pageEmployee8 = pageRecords.reduce((acc, r) => acc + (r.employee_8 || 0), 0);
+                    const pageEarnings = pageRecords.reduce((acc, r) => acc + (r.earnings || 0), 0);
 
-                    {/* Top Row: Postage and Form ID */}
-                    <div className="flex justify-between items-start mb-2">
-                        <div className="flex flex-col">
-                            <div className="border border-black bg-black text-white px-4 py-1.5 text-center text-[11px] font-black tracking-tight">
-                                තැපැල් ගාස්තු ගෙවන ලදී M - 13
-                            </div>
-                            <div className="mt-4 text-[10px] font-bold leading-tight text-slate-700">
-                                භාරදිය නොහැකි වුවහොත් ආපසු එවන්න.<br />
-                                අධිකාරි, සේවක අර්ථසාධක අරමුදල,<br />
-                                ශ්‍රී ලංකා මහ බැංකුව, තැ.පෙ. 1299, කොළඹ.
+                    // Check if last page to show Grand Total at Top Box
+                    const isLastPage = pageIndex === pages.length - 1;
+                    const grandTotalRemittance = records.reduce((acc, r) => acc + (r.total_20 || 0), 0);
+
+                    return (
+                        <div key={pageIndex} className="a4-page relative bg-white shadow-2xl print:shadow-none mx-auto overflow-hidden">
+                            {/* Background Image Wrapper */}
+                            <div 
+                                className="absolute inset-0 w-full h-full z-0 opacity-100" 
+                                style={{ 
+                                    backgroundImage: "url('/epf-form-c-bg.png')",
+                                    backgroundSize: "100% 100%",
+                                    backgroundPosition: "center",
+                                    backgroundRepeat: "no-repeat"
+                                }}
+                            />
+
+                            {/* Data Overlay Container (Positioned absolutely over specific coordinates) */}
+                            <div className="relative z-10 w-full h-full font-sans text-black font-bold text-[12px] uppercase">
+                                
+                                {/* Employer Registration Number */}
+                                {/* Adjust top/left percentages based on visual tuning */}
+                                <div className="absolute top-[10.5%] left-[58%] text-[14px] tracking-widest bg-white/80 px-1">
+                                    65432 / B
+                                </div>
+                                
+                                {/* Month & Year */}
+                                <div className="absolute top-[13.8%] left-[64%] text-[14px] tabular-nums tracking-widest bg-white/80 px-1">
+                                    {mm} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {yyyy}
+                                </div>
+
+                                {/* Header Contributions (Usually put on Last Page, else leave empty or show page subtotal) */}
+                                {isLastPage && (
+                                    <>
+                                        <div className="absolute top-[17.5%] left-[75%] w-[20%] text-right text-[14px] tabular-nums bg-white/80 px-1">
+                                            {grandTotalRemittance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </div>
+                                        {/* Surcharges Default 0.00 */}
+                                        <div className="absolute top-[20.8%] left-[75%] w-[20%] text-right text-[14px] tabular-nums bg-white/80 px-1">
+                                            0.00
+                                        </div>
+                                        <div className="absolute top-[24%] left-[75%] w-[20%] text-right text-[16px] underline decoration-double font-black tabular-nums bg-white/80 px-1">
+                                            {grandTotalRemittance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* TABLE ROWS CONTAINER */}
+                                <div className="absolute top-[35.1%] left-[3.2%] w-[94.8%] h-[47%]">
+                                    {pageRecords.map((row, idx) => {
+                                        // Approximate row height ~ 3.1% of table area
+                                        const topPos = `${idx * 6.55}%`;
+                                        return (
+                                            <div key={idx} className="absolute w-full h-[6.55%]" style={{ top: topPos }}>
+                                                {/* Employee Name */}
+                                                <div className="absolute left-[0%] top-[20%] w-[33%] whitespace-nowrap overflow-hidden text-ellipsis px-1 bg-white/80">
+                                                    {row.name}
+                                                </div>
+                                                {/* NIC */}
+                                                <div className="absolute left-[33.5%] top-[20%] w-[19%] text-center px-1 bg-white/80">
+                                                    {row.nic || '-'}
+                                                </div>
+                                                {/* Member No */}
+                                                <div className="absolute left-[52.5%] top-[20%] w-[10%] text-center font-black px-1 bg-white/80">
+                                                    {row.member_no}
+                                                </div>
+                                                {/* Total 20% */}
+                                                <div className="absolute left-[62.5%] top-[20%] w-[9%] text-right tabular-nums px-1 bg-white/80">
+                                                    {row.total_20.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </div>
+                                                {/* Employer 12% */}
+                                                <div className="absolute left-[71.5%] top-[20%] w-[9%] text-right tabular-nums px-1 bg-white/80">
+                                                    {row.employer_12.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </div>
+                                                {/* Employee 8% */}
+                                                <div className="absolute left-[80.5%] top-[20%] w-[9%] text-right tabular-nums px-1 bg-white/80">
+                                                    {row.employee_8.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </div>
+                                                {/* Gross Wages */}
+                                                <div className="absolute left-[89.5%] top-[20%] w-[10%] text-right tabular-nums px-1 bg-white/80">
+                                                    {row.earnings.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* PAGE TOTALS (Bottom Row of Table) */}
+                                <div className="absolute top-[82.2%] left-[62.5%] w-[9%] text-right tabular-nums text-[13px] bg-white/80 px-1">
+                                    {pageTotal20.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </div>
+                                <div className="absolute top-[82.2%] left-[71.5%] w-[9%] text-right tabular-nums text-[13px] bg-white/80 px-1">
+                                    {pageEmployer12.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </div>
+                                <div className="absolute top-[82.2%] left-[80.5%] w-[9%] text-right tabular-nums text-[13px] bg-white/80 px-1">
+                                    {pageEmployee8.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </div>
+                                <div className="absolute top-[82.2%] left-[89.5%] w-[10%] text-right tabular-nums text-[13px] underline decoration-double bg-white/80 px-1">
+                                    {pageEarnings.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </div>
+                                
                             </div>
                         </div>
-                        <div className="text-right">
-                            <div className="flex items-start gap-3">
-                                <div className="text-[11px] font-bold text-right leading-tight pr-1 pt-1">
-                                    වාර්තාව<br />படிவம்<br />FORM
-                                </div>
-                                <div className="border-2 border-black rounded-full w-12 h-12 flex items-center justify-center text-3xl font-black">
-                                    C
-                                </div>
-                                <div className="text-[9px] font-bold text-left leading-tight pt-1 pl-1">
-                                    1958 අංක 15 දරණ සේ.අ.අ පනත<br />
-                                    ஊ. சே. நி. 1958 - 15ம் பிரிவின்படி<br />
-                                    EPF Act No. 15 of 1958
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Header Detail Box */}
-                    <div className="flex justify-end mb-4">
-                        <div className="w-[420px] border border-slate-800 border-collapse">
-                            <div className="border-b border-slate-800 p-1.5 flex justify-between items-center bg-slate-50">
-                                <span className="text-[9px] font-black leading-tight max-w-[250px]">සේ.අ.අ. සේව්‍ය අංකය / ஊ.සේ.නි பதிவிலக்கம் / E.P.F. Registration No.</span>
-                                <span className="text-lg font-black border-l border-slate-800 pl-4 h-8 flex items-center tracking-widest leading-none">65432 / B</span>
-                            </div>
-                            <div className="border-b border-slate-800 p-1.5 flex justify-between items-center">
-                                <span className="text-[9px] font-black leading-tight max-w-[250px]">දායක මුදල් අදාල වර්ෂය සහ මාසය / மாதமும் வருடமும் / Month and Year</span>
-                                <span className="text-lg font-black border-l border-slate-800 pl-4 h-8 flex items-center tabular-nums leading-none">{mm} / {yyyy}</span>
-                            </div>
-                            <div className="flex text-[9px] font-bold h-14">
-                                <div className="w-1/2 border-r border-slate-800 p-1.5 flex flex-col justify-between">
-                                    <span className="font-black text-slate-600">දායක මුදල් / Contributions</span>
-                                    <span className="text-base font-black text-right pr-1 tabular-nums leading-none">
-                                        {data?.data.reduce((acc, r) => acc + r.total_20, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                    </span>
-                                </div>
-                                <div className="w-1/2 p-1.5 flex flex-col justify-between">
-                                    <span className="font-black text-slate-600">දඩ මුදල් / Surcharges</span>
-                                    <span className="text-base font-black text-right pr-1 tabular-nums leading-none">0.00</span>
-                                </div>
-                            </div>
-                            <div className="border-t border-slate-800 p-1.5 flex justify-between items-center bg-slate-100">
-                                <span className="text-[10px] font-black uppercase">මුළු ගෙවීම / Total Remittance</span>
-                                <span className="text-xl font-black underline decoration-double tabular-nums leading-none">
-                                    {data?.data.reduce((acc, r) => acc + r.total_20, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="text-center text-[9px] font-bold mb-3 uppercase border-y border-slate-200 py-1 text-slate-600">
-                        මෙම වාර්තාව නිසි ලෙස පුරවා දායක මුදල් සමඟ සේවක අර්ථසාධක අරමුදලේ අධිකාරි වෙත එවිය යුතුය. / FORM SHOULD BE RETURNED DULY COMPLETED
-                    </div>
-
-                    {/* Main Table: Full words in headers */}
-                    <table className="w-full border-collapse border border-slate-800 text-[10px]">
-                        <thead>
-                            <tr className="border-b border-slate-800 bg-slate-50 italic">
-                                <th className="border-r border-slate-800 px-1 py-2 w-40 align-top text-left font-black leading-tight">
-                                    Employee's Name
-                                </th>
-                                <th className="border-r border-slate-800 px-1 py-2 w-28 align-top font-black leading-tight">
-                                    NIC Number
-                                </th>
-                                <th className="border-r border-slate-800 px-1 py-2 w-16 align-top font-black leading-tight">
-                                    Member Number
-                                </th>
-                                <th className="border-r border-slate-800 px-0 py-0 align-top">
-                                    <div className="border-b border-slate-800 p-1 text-center font-black">Contributions (Rs.)</div>
-                                    <div className="flex font-black text-[8px]">
-                                        <div className="w-1/3 border-r border-slate-800 p-1 text-center">Total</div>
-                                        <div className="w-1/3 border-r border-slate-800 p-1 text-center uppercase">Employer</div>
-                                        <div className="w-1/3 p-1 text-center uppercase">Employee</div>
-                                    </div>
-                                </th>
-                                <th className="px-1 py-2 w-28 align-top text-right font-black leading-tight">
-                                    Gross Wages (Rs.)
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="font-mono text-[13px]">
-                            {data?.data.map((row, idx) => (
-                                <tr key={idx} className="border-b border-slate-400 h-9">
-                                    <td className="border-r border-slate-800 px-2 uppercase leading-snug font-serif text-[11px] font-bold">{row.name}</td>
-                                    <td className="border-r border-slate-800 px-1 text-center tracking-tighter text-[11px]">{row.nic || '---------'}</td>
-                                    <td className="border-r border-slate-800 px-1 text-center font-black">{row.member_no}</td>
-                                    <td className="border-r border-slate-800 px-0 py-0">
-                                        <div className="flex h-full font-black">
-                                            <div className="w-1/3 border-r border-slate-400 px-1 py-2 text-right bg-slate-50/50">{row.total_20.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-                                            <div className="w-1/3 border-r border-slate-400 px-1 py-2 text-right">{row.employer_12.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-                                            <div className="w-1/3 px-1 py-2 text-right font-bold text-slate-700">{row.employee_8.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-                                        </div>
-                                    </td>
-                                    <td className="px-1.5 text-right tabular-nums">{row.earnings.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                </tr>
-                            ))}
-                            {[...Array(Math.max(0, 16 - (data?.data.length || 0)))].map((_, i) => (
-                                <tr key={`empty-${i}`} className="border-b border-slate-400 h-9">
-                                    <td className="border-r border-slate-800"></td>
-                                    <td className="border-r border-slate-800"></td>
-                                    <td className="border-r border-slate-800"></td>
-                                    <td className="border-r border-slate-800 px-0">
-                                        <div className="flex h-full">
-                                            <div className="w-1/3 border-r border-slate-400"></div>
-                                            <div className="w-1/3 border-r border-slate-400"></div>
-                                            <div className="w-1/3"></div>
-                                        </div>
-                                    </td>
-                                    <td></td>
-                                </tr>
-                            ))}
-                        </tbody>
-                        <tfoot>
-                            <tr className="bg-slate-100 border-t border-slate-800 font-black text-[12px]">
-                                <td colSpan="3" className="border-r border-slate-800 px-4 py-3 text-right uppercase italic text-slate-700">
-                                    Grand Total Remittance
-                                </td>
-                                <td className="border-r border-slate-800 px-0 py-0 font-mono text-[14px]">
-                                    <div className="flex h-full">
-                                        <div className="w-1/3 border-r border-slate-800 px-1 py-3 text-right bg-slate-200">
-                                            {data?.data.reduce((acc, r) => acc + r.total_20, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                        </div>
-                                        <div className="w-1/3 border-r border-slate-800 px-1 py-3 text-right">
-                                            {data?.data.reduce((acc, r) => acc + r.employer_12, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                        </div>
-                                        <div className="w-1/3 px-1 py-3 text-right">
-                                            {data?.data.reduce((acc, r) => acc + r.employee_8, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-1.5 text-right underline decoration-double text-[14px] font-mono leading-none">
-                                    {data?.data.reduce((acc, r) => acc + r.earnings, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                </td>
-                            </tr>
-                        </tfoot>
-                    </table>
-
-                    {/* Footer: Compact Contact Fields */}
-                    <div className="mt-6 flex justify-between items-end">
-                        <div className="w-1/2 space-y-3">
-                            <div className="text-[9px] font-bold leading-tight text-slate-700">
-                                ඉහත සඳහන් විස්තර නිවැරදි බව සහතික කරමි. / I certify correctness.
-                            </div>
-                            <div className="pt-6 border-t border-slate-400 w-60 text-center">
-                                <p className="text-[10px] font-black uppercase tracking-tighter">Signature of Employer</p>
-                                <p className="text-[8px] mt-0.5">Tel: .................................</p>
-                            </div>
-                        </div>
-                        <div className="text-right text-[8px] font-bold text-slate-400 italic">
-                            Official Replica | Single-Page Submission
-                        </div>
-                    </div>
-                </div>
+                    );
+                })}
             </main>
 
+            {/* CSS Variables for precise printing and overlay tuning */}
             <style>{`
+                /* Standard A4 size in mm to ensure perfect printing aspect ratio */
+                .a4-page {
+                    width: 210mm;
+                    height: 297mm;
+                    page-break-after: always;
+                }
+
                 @media print {
-                    @page { size: portrait; margin: 8mm; }
-                    body { background: white !important; -webkit-print-color-adjust: exact; }
+                    @page { 
+                        size: A4 portrait; 
+                        margin: 0; /* Remove browser margins, the image covers fully */
+                    }
+                    body { 
+                        background: white !important; 
+                        -webkit-print-color-adjust: exact !important; 
+                        print-color-adjust: exact !important; 
+                        margin: 0;
+                        padding: 0;
+                    }
                     .print:hidden { display: none !important; }
-                    table, th, td, div { border-collapse: collapse !important; }
-                    * { border-color: #475569 !important; }
-                    .border-slate-800 { border-color: #1e293b !important; }
-                    .bg-black { background-color: black !important; }
+                    /* Make sure background images load during print */
+                    .a4-page {
+                        page-break-after: always;
+                        box-shadow: none !important;
+                        margin: 0 !important;
+                    }
                 }
             `}</style>
         </div>
