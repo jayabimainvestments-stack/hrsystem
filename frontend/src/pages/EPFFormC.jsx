@@ -3,6 +3,7 @@ import api from '../services/api';
 import Navbar from '../components/Navbar';
 import { Printer, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { epfBg } from '../assets/epfBg';
 
 const EPFFormC = () => {
     const navigate = useNavigate();
@@ -101,7 +102,7 @@ const EPFFormC = () => {
                             <div 
                                 className="absolute inset-0 w-full h-full z-0 opacity-100" 
                                 style={{ 
-                                    backgroundImage: "url('/epf-form-c-bg.png')",
+                                    backgroundImage: `url(${epfBg})`,
                                     backgroundSize: "100% 100%",
                                     backgroundPosition: "center",
                                     backgroundRepeat: "no-repeat"
