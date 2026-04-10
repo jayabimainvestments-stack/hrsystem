@@ -16,7 +16,8 @@ const getPendingChanges = async (req, res) => {
                      WHEN p.entity = 'employee_bank_details' THEN 'BANK'
                      ELSE 'SALARY' 
                    END as type,
-                   COALESCE(tu.name, bank_u.name, att_u.name, fallback_u.name) as target_name
+                   COALESCE(tu.name, bank_u.name, att_u.name, fallback_u.name) as target_name,
+                   att.date as attendance_date
             FROM pending_changes p
             LEFT JOIN users u ON p.requested_by = u.id
             
@@ -210,6 +211,14 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
                 if (change.field_name === 'MULTIPLE_COMPONENTS') {
                     const updates = JSON.parse(change.new_value);
                     for (const update of updates) {
+                        if (update.action === 'DELETE') {
+                            await client.query(
+                                'DELETE FROM employee_salary_structure WHERE employee_id = $1 AND component_id = $2 AND is_locked = false',
+                                [change.entity_id, update.component_id]
+                            );
+                            continue;
+                        }
+
                         const check = await client.query(
                             'SELECT id FROM employee_salary_structure WHERE employee_id = $1 AND component_id = $2',
                             [change.entity_id, update.component_id]

@@ -131,7 +131,7 @@ const EmployeeList = () => {
                                                 <div className="w-12 h-12 rounded-2xl bg-primary-600 text-white flex items-center justify-center font-black text-sm shadow-lg shadow-primary-100 group-hover:rotate-3 transition-transform overflow-hidden">
                                                     {emp.profile_picture ? (
                                                         <img
-                                                            src={emp.profile_picture.startsWith('http') ? emp.profile_picture : `${BASE_URL}${emp.profile_picture}`}
+                                                            src={emp.profile_picture.startsWith('http') || emp.profile_picture.startsWith('data:') ? emp.profile_picture : `${BASE_URL}${emp.profile_picture}`}
                                                             alt={emp.name}
                                                             className="w-full h-full object-cover"
                                                         />

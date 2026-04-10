@@ -194,10 +194,10 @@ const Navbar = () => {
                         </div>
 
                         <div className="flex items-center gap-3">
-                            <Link to="/profile" className="h-9 w-9 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 hover:border-secondary-400 transition-all hover:scale-105 active:scale-95 group/navav shadow-sm">
+                            <Link to="/profile" className="h-11 w-11 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 hover:border-secondary-400 transition-all hover:scale-105 active:scale-95 group/navav shadow-sm">
                                 {user?.profile_picture ? (
                                     <img
-                                        src={user.profile_picture.startsWith('http') ? user.profile_picture : `${BASE_URL}${user.profile_picture}`}
+                                        src={user.profile_picture.startsWith('http') || user.profile_picture.startsWith('data:') ? user.profile_picture : `${BASE_URL}${user.profile_picture}`}
                                         alt={user.name}
                                         className="w-full h-full object-cover group-hover/navav:scale-110 transition-transform duration-500"
                                     />

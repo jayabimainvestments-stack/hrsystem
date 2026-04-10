@@ -21,7 +21,6 @@ const SalaryBaselineTab = ({ consolidatedBaseline, structureLoading, fetchConsol
         'Not Processed':                { bg: 'bg-slate-100',   text: 'text-slate-500',   dot: 'bg-slate-400',   label: '— Not Processed' },
         'Pending Approval':             { bg: 'bg-amber-50',    text: 'text-amber-700',   dot: 'bg-amber-400',   label: '⏳ Pending Approval' },
         'Override Applied':             { bg: 'bg-blue-50',     text: 'text-blue-700',    dot: 'bg-blue-500',    label: '↑ Override Applied' },
-        'Pending for Approval':         { bg: 'bg-orange-50',   text: 'text-orange-700',  dot: 'bg-orange-400',  label: '⏳ Pending for Approval' },
         'Approved – Not Yet Processed': { bg: 'bg-teal-50',     text: 'text-teal-700',    dot: 'bg-teal-400',    label: '✓ Approved – Awaiting Payroll' },
     };
 
@@ -29,7 +28,7 @@ const SalaryBaselineTab = ({ consolidatedBaseline, structureLoading, fetchConsol
         const cfg = statusConfig[status] || { bg: 'bg-slate-100', text: 'text-slate-500', dot: 'bg-slate-400', label: status };
         return (
             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${cfg.bg} ${cfg.text}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} ${(status === 'Pending Approval' || status === 'Pending for Approval') ? 'animate-pulse' : ''}`}></span>
+                <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} ${status === 'Pending Approval' ? 'animate-pulse' : ''}`}></span>
                 {cfg.label}
             </span>
         );
@@ -72,7 +71,7 @@ const SalaryBaselineTab = ({ consolidatedBaseline, structureLoading, fetchConsol
             ) : employees.map(emp => {
                 const isExpanded = expandedEmp === emp.id;
                 const hasPending = (emp.components || []).some(c =>
-                    c.status === 'Pending Approval' || c.status === 'Pending for Approval' || c.status === 'Approved – Not Yet Processed'
+                    c.status === 'Pending Approval' || c.status === 'Approved – Not Yet Processed'
                 );
                 const net = (emp.total_earnings || 0) - (emp.total_deductions || 0);
 
@@ -108,7 +107,7 @@ const SalaryBaselineTab = ({ consolidatedBaseline, structureLoading, fetchConsol
                                             <div key={i} className={`px-2 py-0.5 rounded-md flex items-center justify-center text-[7px] font-black uppercase tracking-tight ${isExpanded ? 'bg-white/10 text-emerald-300' : 'bg-emerald-50 text-emerald-600 border border-emerald-100/50'}`}>
                                                 {c.name}
                                                 <span className="ml-1 opacity-60">
-                                                    {(c.status === 'Pending Approval' || c.status === 'Pending for Approval') ? '⏳' : c.status === 'Confirmed' ? '✓' : ''}
+                                                    {c.status === 'Pending Approval' ? '⏳' : c.status === 'Confirmed' ? '✓' : ''}
                                                 </span>
                                             </div>
                                         ))}
@@ -125,7 +124,7 @@ const SalaryBaselineTab = ({ consolidatedBaseline, structureLoading, fetchConsol
                                             <div key={i} className={`px-2 py-0.5 rounded-md flex items-center justify-center text-[7px] font-black uppercase tracking-tight ${isExpanded ? 'bg-white/10 text-rose-300' : 'bg-rose-50 text-rose-600 border border-rose-100/50'}`}>
                                                 {c.name}
                                                 <span className="ml-1 opacity-60">
-                                                    {(c.status === 'Pending Approval' || c.status === 'Pending for Approval') ? '⏳' : c.status === 'Confirmed' ? '✓' : ''}
+                                                    {c.status === 'Pending Approval' ? '⏳' : c.status === 'Confirmed' ? '✓' : ''}
                                                 </span>
                                             </div>
                                         ))}

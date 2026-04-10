@@ -1,6 +1,8 @@
 const db = require('../config/db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const fs = require('fs');
+const path = require('path');
 
 const generateToken = (id, role) => {
     return jwt.sign({ id, role }, process.env.JWT_SECRET, {
@@ -179,20 +181,35 @@ const uploadProfilePicture = async (req, res) => {
         return res.status(400).json({ message: 'No file uploaded' });
     }
 
+    const filePath = req.file.path;
+
     try {
-        const imageUrl = `/uploads/${req.file.filename}`;
+        // Read file and convert to Base64
+        const fileBuffer = fs.readFileSync(filePath);
+        const base64Image = `data:${req.file.mimetype};base64,${fileBuffer.toString('base64')}`;
 
         await db.query(
             'UPDATE users SET profile_picture = $1 WHERE id = $2',
-            [imageUrl, req.user.id]
+            [base64Image, req.user.id]
         );
+
+        // Delete the physical file after successful DB update
+        try {
+            fs.unlinkSync(filePath);
+        } catch (unlinkError) {
+            console.warn(`Failed to delete temporary file: ${filePath}`, unlinkError);
+        }
 
         res.status(200).json({
             message: 'Profile picture updated successfully',
-            profile_picture: imageUrl
+            profile_picture: base64Image
         });
     } catch (error) {
         console.error('Profile Picture Upload Error:', error);
+        // Clean up file on error
+        if (fs.existsSync(filePath)) {
+            try { fs.unlinkSync(filePath); } catch (e) {}
+        }
         res.status(500).json({ message: 'Internal server error during upload update' });
     }
 };
@@ -205,27 +222,46 @@ const uploadProfilePictureByAdmin = async (req, res) => {
         return res.status(400).json({ message: 'No file uploaded' });
     }
 
-    try {
-        const imageUrl = `/uploads/${req.file.filename}`;
-        const userId = req.params.userId;
+    const filePath = req.file.path;
+    const userId = req.params.userId;
 
-        console.log(`Admin ${req.user.id} setting profile picture for user ${userId}: ${imageUrl}`);
+    try {
+        // Read file and convert to Base64
+        const fileBuffer = fs.readFileSync(filePath);
+        const base64Image = `data:${req.file.mimetype};base64,${fileBuffer.toString('base64')}`;
+
+        console.log(`Admin ${req.user.id} setting profile picture for user ${userId} as Base64`);
 
         const result = await db.query(
             'UPDATE users SET profile_picture = $1 WHERE id = $2 RETURNING id',
-            [imageUrl, userId]
+            [base64Image, userId]
         );
 
         if (result.rows.length === 0) {
+            // Clean up file if user not found
+            if (fs.existsSync(filePath)) {
+                try { fs.unlinkSync(filePath); } catch (e) {}
+            }
             return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Delete the physical file after successful DB update
+        try {
+            fs.unlinkSync(filePath);
+        } catch (unlinkError) {
+            console.warn(`Failed to delete temporary file: ${filePath}`, unlinkError);
         }
 
         res.status(200).json({
             message: 'Profile picture updated successfully',
-            profile_picture: imageUrl
+            profile_picture: base64Image
         });
     } catch (error) {
         console.error('Admin Profile Picture Upload Error:', error);
+        // Clean up file on error
+        if (fs.existsSync(filePath)) {
+            try { fs.unlinkSync(filePath); } catch (e) {}
+        }
         res.status(500).json({ message: 'Internal server error during upload update' });
     }
 };

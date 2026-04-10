@@ -238,11 +238,27 @@ const LeaveManagement = () => {
 
                 {/* Attendance Anomalies Section */}
                 {attendance.some(a => {
-                    if (a.status === 'Absent' || a.status === 'Late') return true;
+                    const isLateArrival = (time) => {
+                        if (!time || time === '--:--') return false;
+                        const m = time.match(/^(\d{1,2}):(\d{2})/);
+                        if (!m) return false;
+                        return (parseInt(m[1]) * 60 + parseInt(m[2])) > 510; // 08:30
+                    };
+                    const isEarlyDeparture = (time) => {
+                        if (!time || time === '--:--') return false;
+                        const m = time.match(/^(\d{1,2}):(\d{2})/);
+                        if (!m) return false;
+                        return (parseInt(m[1]) * 60 + parseInt(m[2])) < 991; // 16:31
+                    };
+
+                    if (a.status === 'Absent') return true;
                     if (a.status === 'Incomplete') {
                         const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
                         const attDateStr = new Date(a.date).toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
                         return attDateStr < todayStr;
+                    }
+                    if (a.status === 'Present' || a.status === 'Late') {
+                        return isLateArrival(a.clock_in) || isEarlyDeparture(a.clock_out);
                     }
                     return false;
                 }) && (
@@ -252,11 +268,27 @@ const LeaveManagement = () => {
                         </h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {attendance.filter(a => {
-                                if (a.status === 'Absent' || a.status === 'Late') return true;
+                                const isLateArrival = (time) => {
+                                    if (!time || time === '--:--') return false;
+                                    const m = time.match(/^(\d{1,2}):(\d{2})/);
+                                    if (!m) return false;
+                                    return (parseInt(m[1]) * 60 + parseInt(m[2])) > 510; // 08:30
+                                };
+                                const isEarlyDeparture = (time) => {
+                                    if (!time || time === '--:--') return false;
+                                    const m = time.match(/^(\d{1,2}):(\d{2})/);
+                                    if (!m) return false;
+                                    return (parseInt(m[1]) * 60 + parseInt(m[2])) < 991; // 16:31
+                                };
+
+                                if (a.status === 'Absent') return true;
                                 if (a.status === 'Incomplete') {
                                     const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
                                     const attDateStr = new Date(a.date).toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
                                     return attDateStr < todayStr;
+                                }
+                                if (a.status === 'Present' || a.status === 'Late') {
+                                    return isLateArrival(a.clock_in) || isEarlyDeparture(a.clock_out);
                                 }
                                 return false;
                             }).map(record => (
@@ -264,10 +296,17 @@ const LeaveManagement = () => {
                                     }`}>
                                     <div>
                                         <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${record.status === 'Absent' ? 'text-red-500' : 'text-amber-600'
-                                            }`}>{record.status}</p>
+                                            }`}>{record.status === 'Present' ? (
+                                                (parseInt(record.clock_in?.split(':')[0]) * 60 + parseInt(record.clock_in?.split(':')[1])) > 510 ? 'Late Arrival' : 'Early Departure'
+                                            ) : record.status}</p>
                                         <p className="text-lg font-bold text-slate-900">{new Date(record.date).toLocaleDateString()}</p>
                                         <p className="text-xs text-slate-500 font-medium">
-                                            {record.status === 'Late' ? `${record.late_minutes}m Late` : record.status === 'Incomplete' ? 'Incomplete Attendance' : 'Recorded as Absent'}
+                                            {record.status === 'Incomplete' ? 'Incomplete Attendance' : 
+                                             record.status === 'Present' ? (
+                                                 (parseInt(record.clock_in?.split(':')[0]) * 60 + parseInt(record.clock_in?.split(':')[1])) > 510 
+                                                 ? `${record.late_minutes}m Late` 
+                                                 : `Early Exit (${record.clock_out || '--:--'})`
+                                             ) : 'Recorded as Absent'}
                                         </p>
                                     </div>
                                     <button

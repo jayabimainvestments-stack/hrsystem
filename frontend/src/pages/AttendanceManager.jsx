@@ -132,10 +132,10 @@ const AttendanceManager = () => {
         let matchesStatus = false;
         if (statusSearch === '') {
             matchesStatus = true;
-        } else if (statusSearch === 'Late Arrived') {
-            matchesStatus = isLateArrival(record.clock_in);
-        } else if (statusSearch === 'Early Departure') {
-            matchesStatus = isEarlyDeparture(record.clock_out);
+        } else if (statusSearch === 'Present') {
+            matchesStatus = record.status === 'Present' && !isLateArrival(record.clock_in) && !isEarlyDeparture(record.clock_out);
+        } else if (statusSearch === 'Delayed Present') {
+            matchesStatus = record.status === 'Present' && (isLateArrival(record.clock_in) || isEarlyDeparture(record.clock_out));
         } else if (statusSearch === 'Incomplete') {
             matchesStatus = record.status === 'Incomplete' || isLateArrival(record.clock_in) || isEarlyDeparture(record.clock_out);
         } else {
@@ -601,17 +601,29 @@ const AttendanceManager = () => {
                                     <Activity size={12} className="text-blue-500" />
                                     Status Overlay
                                 </label>
-                                <div className="flex flex-wrap gap-2">
-                                    {['Present', 'Incomplete', 'Absent', 'Leave'].map(status => (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                                    {[
+                                        { id: 'Present', label: 'Present', color: 'emerald' },
+                                        { id: 'Delayed Present', label: 'Delayed Present', color: 'rose' },
+                                        { id: 'Incomplete', label: 'Incomplete', color: 'indigo' },
+                                        { id: 'Absent', label: 'Absent', color: 'rose' },
+                                        { id: 'Leave', label: 'Leave', color: 'sky' }
+                                    ].map(item => (
                                         <button
-                                            key={status}
-                                            onClick={() => setStatusSearch(statusSearch === status ? '' : status)}
-                                            className={`px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all border-2 flex-grow text-center ${statusSearch === status
-                                                ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-100'
-                                                : 'bg-white text-slate-400 border-slate-50 hover:border-blue-100 hover:text-blue-500'
-                                                }`}
+                                            key={item.id}
+                                            onClick={() => setStatusSearch(statusSearch === item.id ? '' : item.id)}
+                                            className={`px-3 py-2.5 rounded-2xl text-[9px] font-black uppercase tracking-[0.1em] transition-all border-2 text-center group ${
+                                                statusSearch === item.id
+                                                    ? `bg-${item.color}-600 text-white border-${item.color}-600 shadow-lg shadow-${item.color}-200/50 scale-95`
+                                                    : `bg-white text-slate-400 border-slate-50 hover:border-${item.color}-200 hover:text-${item.color}-600 hover:shadow-md hover:shadow-${item.color}-50/50`
+                                            }`}
                                         >
-                                            {status}
+                                            <div className="flex flex-col items-center gap-0.5">
+                                                <span className={`${statusSearch === item.id ? 'text-white' : `text-${item.color}-500/40 group-hover:text-${item.color}-500`} transition-colors`}>
+                                                    <Activity size={10} />
+                                                </span>
+                                                {item.label}
+                                            </div>
                                         </button>
                                     ))}
                                 </div>
@@ -910,7 +922,7 @@ const AttendanceManager = () => {
                                             <th className="px-8 py-6 text-center text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em]">Present</th>
                                             <th className="px-8 py-6 text-center text-[10px] font-black text-red-500 uppercase tracking-[0.2em]">Absent</th>
                                             <th className="px-8 py-6 text-center text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em]">Incomplete</th>
-                                            <th className="px-8 py-6 text-center text-[10px] font-black text-amber-500 uppercase tracking-[0.2em]">Late</th>
+                                            <th className="px-8 py-6 text-center text-[10px] font-black text-amber-500 uppercase tracking-[0.2em]">Delayed Present</th>
                                             <th className="px-8 py-6 text-center text-[10px] font-black text-blue-500 uppercase tracking-[0.2em]">On Leave</th>
                                         </tr>
                                     </thead>
@@ -1070,17 +1082,29 @@ const AttendanceManager = () => {
                                                         </div>
                                                     </td>
                                                     <td className="px-8 py-6">
-                                                        <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
+                                                    <div className="flex flex-col gap-1 items-center">
+                                                        <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all shadow-sm ${
                                                             record.status === 'Present' 
                                                                 ? (isLateArrival(record.clock_in) || isEarlyDeparture(record.clock_out)
-                                                                    ? 'bg-red-50 text-red-600 border-red-100'
-                                                                    : 'bg-emerald-50 text-emerald-600 border-emerald-100')
-                                                                : record.status === 'Absent' ? 'bg-red-50 text-red-600 border-red-100' :
+                                                                    ? 'bg-rose-50 text-rose-600 border-rose-100 shadow-rose-100/30'
+                                                                    : 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-emerald-100/30')
+                                                                : record.status === 'Absent' ? 'bg-rose-50 text-rose-600 border-rose-100' :
                                                                     record.status === 'Incomplete' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
-                                                                        'bg-amber-50 text-amber-600 border-amber-100'
-                                                            }`}>
+                                                                        'bg-slate-50 text-slate-600 border-slate-100'
+                                                        }`}>
                                                             {record.status}
                                                         </span>
+                                                        {(isLateArrival(record.clock_in) || isEarlyDeparture(record.clock_out)) && record.status === 'Present' && (
+                                                            <div className="flex flex-wrap gap-1 justify-center">
+                                                                {isLateArrival(record.clock_in) && (
+                                                                    <span className="text-[7px] font-black text-rose-500 uppercase tracking-tighter bg-rose-50 px-1.5 rounded-sm border border-rose-100">Late</span>
+                                                                )}
+                                                                {isEarlyDeparture(record.clock_out) && (
+                                                                    <span className="text-[7px] font-black text-rose-500 uppercase tracking-tighter bg-rose-50 px-1.5 rounded-sm border border-rose-100">Early</span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                     </td>
                                                     <td className="px-8 py-6 text-xs text-slate-500 font-medium italic">{record.source}</td>
                                                 </tr>

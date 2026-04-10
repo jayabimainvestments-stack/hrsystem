@@ -130,6 +130,27 @@ const createEmployee = async (req, res) => {
     }
 };
 
+const isFieldValueChanged = (currentVal, newVal) => {
+    // Treat null, undefined, and empty string as equivalent
+    const normalizedCurrent = (currentVal === null || currentVal === undefined) ? '' : String(currentVal).trim();
+    const normalizedNew = (newVal === null || newVal === undefined) ? '' : String(newVal).trim();
+
+    // Handle Date objects from Postgres
+    if (currentVal instanceof Date && !isNaN(currentVal)) {
+        const dateCurrent = currentVal.toISOString().split('T')[0];
+        // If newVal is already a valid date string, compare just the date part
+        return dateCurrent !== normalizedNew;
+    }
+
+    // Handle potential date strings from DB (YYYY-MM-DD...)
+    const dateRegex = /^\d{4}-\d{2}-\d{2}/;
+    if (typeof currentVal === 'string' && dateRegex.test(currentVal) && dateRegex.test(normalizedNew)) {
+        return currentVal.split('T')[0] !== normalizedNew.split('T')[0];
+    }
+
+    return normalizedCurrent !== normalizedNew;
+};
+
 const updateEmployee = async (req, res) => {
     const {
         name, email, role,
@@ -167,27 +188,35 @@ const updateEmployee = async (req, res) => {
 
         // Split fields by entity for correct governance tracking
         const userSensitiveFields = ['name', 'email'];
-        const employeeSensitiveFields = ['nic_passport', 'designation', 'department', 'employment_status', 'biometric_id', 'epf_no', 'phone', 'address', 'dob', 'gender', 'marital_status'];
+        const employeeSensitiveFields = [
+            'nic_passport', 'designation', 'department', 'employment_status',
+            'biometric_id', 'epf_no', 'phone', 'address', 'dob', 'gender',
+            'marital_status', 'hire_date', 'is_epf_eligible', 'is_etf_eligible'
+        ];
+
+        const pendingFields = new Set();
 
         for (const field of userSensitiveFields) {
-            if (req.body[field] !== undefined && String(req.body[field]) !== String(current[field])) {
+            if (req.body[field] !== undefined && isFieldValueChanged(current[field], req.body[field])) {
                 await db.query(
                     `INSERT INTO pending_changes (entity, entity_id, field_name, old_value, new_value, requested_by, reason)
                      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                     ['users', userId, field, current[field], req.body[field], req.user.id, requestReason]
                 );
                 pendingCount++;
+                pendingFields.add(field);
             }
         }
 
         for (const field of employeeSensitiveFields) {
-            if (req.body[field] !== undefined && String(req.body[field]) !== String(current[field])) {
+            if (req.body[field] !== undefined && isFieldValueChanged(current[field], req.body[field])) {
                 await db.query(
                     `INSERT INTO pending_changes (entity, entity_id, field_name, old_value, new_value, requested_by, reason)
                      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                     ['employees', id, field, current[field], req.body[field], req.user.id, requestReason]
                 );
                 pendingCount++;
+                pendingFields.add(field);
             }
         }
 
@@ -200,7 +229,7 @@ const updateEmployee = async (req, res) => {
                 account_holder_name: 'account_holder_name'
             };
             for (const [bodyField, dbField] of Object.entries(bankFieldsMapping)) {
-                if (bank_details[bodyField] !== undefined && String(bank_details[bodyField]) !== String(current[dbField])) {
+                if (bank_details[bodyField] !== undefined && isFieldValueChanged(current[dbField], bank_details[bodyField])) {
                     await db.query(
                         `INSERT INTO pending_changes (entity, entity_id, field_name, old_value, new_value, requested_by, reason)
                          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -218,24 +247,27 @@ const updateEmployee = async (req, res) => {
             await db.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
         }
 
-        // Handle role update (Admin only, usually immediate as it's a security/permission thing)
+        // Handle role update (Admin only)
         if (role && req.user.role === 'Admin') {
             await db.query('UPDATE users SET role = $1 WHERE id = $2', [role, userId]);
         }
 
         const empContact = emergency_contact ? JSON.stringify(emergency_contact) : null;
+
+        // CRITICAL FIX: If a field is pending approval, we DO NOT update it in the immediate table.
+        // We use the CURRENT value instead of the NEW value for those specific fields.
+        const finalHireDate = pendingFields.has('hire_date') ? current.hire_date : (hire_date || current.hire_date);
+        const finalEpfEligible = pendingFields.has('is_epf_eligible') ? current.is_epf_eligible : (is_epf_eligible === undefined ? current.is_epf_eligible : is_epf_eligible);
+        const finalEtfEligible = pendingFields.has('is_etf_eligible') ? current.is_etf_eligible : (is_etf_eligible === undefined ? current.is_etf_eligible : is_etf_eligible);
+
         const result = await db.query(
             `UPDATE employees 
-             SET hire_date = COALESCE($1, hire_date), 
-                 is_epf_eligible = COALESCE($2, is_epf_eligible),
-                 is_etf_eligible = COALESCE($3, is_etf_eligible),
+             SET hire_date = $1, 
+                 is_epf_eligible = $2,
+                 is_etf_eligible = $3,
                  emergency_contact = COALESCE($4, emergency_contact)
              WHERE id = $5 RETURNING *`,
-            [hire_date,
-                is_epf_eligible === undefined ? current.is_epf_eligible : is_epf_eligible,
-                is_etf_eligible === undefined ? current.is_etf_eligible : is_etf_eligible,
-                empContact,
-                id]
+            [finalHireDate, finalEpfEligible, finalEtfEligible, empContact, id]
         );
 
         await db.query('COMMIT');
@@ -269,54 +301,76 @@ const promoteEmployee = async (req, res) => {
             return res.status(404).json({ message: 'Employee not found' });
         }
         const currentEmp = currentEmpRes.rows[0];
+        const requestReason = reason || 'Career Update / Promotion';
 
+        let pendingCount = 0;
+
+        // Handle Governance for Designation change
+        if (new_designation && isFieldValueChanged(currentEmp.designation, new_designation)) {
+            await db.query(
+                `INSERT INTO pending_changes (entity, entity_id, field_name, old_value, new_value, requested_by, reason)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                ['employees', req.params.id, 'designation', currentEmp.designation, new_designation, req.user.id, requestReason]
+            );
+            pendingCount++;
+        }
+
+        // Handle Governance for Department change
+        if (new_department && isFieldValueChanged(currentEmp.department, new_department)) {
+            await db.query(
+                `INSERT INTO pending_changes (entity, entity_id, field_name, old_value, new_value, requested_by, reason)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                ['employees', req.params.id, 'department', currentEmp.department, new_department, req.user.id, requestReason]
+            );
+            pendingCount++;
+        }
+
+        // Handle Salary update directly or via governance?
+        // Salary should also be approved if it's changing the baseline.
+        if (new_salary && (parseFloat(new_salary) > 0)) {
+            const componentRes = await db.query('SELECT id FROM salary_components WHERE name ILIKE $1 OR name ILIKE $2', ['Basic pay', 'Basic Salary']);
+            if (componentRes.rows.length > 0) {
+                const basicSalaryId = componentRes.rows[0].id;
+                const check = await db.query(
+                    'SELECT amount FROM employee_salary_structure WHERE employee_id = $1 AND component_id = $2',
+                    [req.params.id, basicSalaryId]
+                );
+                
+                const currentSalary = check.rows.length > 0 ? check.rows[0].amount : 0;
+                
+                if (isFieldValueChanged(currentSalary, new_salary)) {
+                    await db.query(
+                        `INSERT INTO pending_changes (entity, entity_id, field_name, old_value, new_value, requested_by, reason)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                        ['employee_salary_structure', req.params.id, `salary_structure:${basicSalaryId}`, currentSalary, new_salary, req.user.id, requestReason]
+                    );
+                    pendingCount++;
+                }
+            }
+        }
+
+        // Create history record (This can happen immediately as it's an audit trail of the REQUEST)
         await db.query(
             `INSERT INTO employee_history 
             (employee_id, action_type, previous_department, new_department, previous_designation, new_designation, previous_salary, new_salary, reason, changed_by)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
             [
                 req.params.id, action_type || 'Update',
-                currentEmp.department, new_department,
-                currentEmp.designation, new_designation,
+                currentEmp.department, new_department || currentEmp.department,
+                currentEmp.designation, new_designation || currentEmp.designation,
                 0, new_salary || 0,
                 reason, req.user.id
             ]
         );
 
-        const result = await db.query(
-            `UPDATE employees 
-             SET designation = COALESCE($1, designation), 
-                 department = COALESCE($2, department)
-             WHERE id = $3 RETURNING *`,
-            [new_designation, new_department, req.params.id]
-        );
-
-        // Sync to salary structure
-        if (new_salary && (parseFloat(new_salary) > 0)) {
-            // Dynamic lookup for 'Basic Salary' component (Matches 'Basic pay' or 'Basic Salary' case-insensitively)
-            const componentRes = await db.query('SELECT id FROM salary_components WHERE name ILIKE $1 OR name ILIKE $2', ['Basic pay', 'Basic Salary']);
-            if (componentRes.rows.length === 0) throw new Error('Salary component "Basic pay" or "Basic Salary" not found in settings.');
-            const basicSalaryId = componentRes.rows[0].id;
-
-            const check = await db.query(
-                'SELECT id FROM employee_salary_structure WHERE employee_id = $1 AND component_id = $2',
-                [req.params.id, basicSalaryId]
-            );
-            if (check.rows.length > 0) {
-                await db.query(
-                    'UPDATE employee_salary_structure SET amount = $1 WHERE employee_id = $2 AND component_id = $3',
-                    [new_salary, req.params.id, basicSalaryId]
-                );
-            } else {
-                await db.query(
-                    'INSERT INTO employee_salary_structure (employee_id, component_id, amount) VALUES ($1, $2, $3)',
-                    [req.params.id, basicSalaryId, new_salary]
-                );
-            }
-        }
+        // NOTE: We DO NOT update the employees table designation/department here if they are now pending approval.
+        // If pendingCount > 0, the actual changes await Governance.
 
         await db.query('COMMIT');
-        res.status(200).json(result.rows[0]);
+        res.status(200).json({
+            message: pendingCount > 0 ? `${pendingCount} changes queued for approval.` : 'Career record updated.',
+            pending_changes: pendingCount
+        });
     } catch (error) {
         await db.query('ROLLBACK');
         res.status(500).json({ message: error.message });

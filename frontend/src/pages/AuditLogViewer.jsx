@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 const AuditLogViewer = () => {
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [selectedLog, setSelectedLog] = useState(null);
     const [filters, setFilters] = useState({
         user: '',
         action: '',
@@ -118,12 +119,12 @@ const AuditLogViewer = () => {
                         <table className="min-w-full divide-y divide-slate-100">
                             <thead className="bg-slate-50/50">
                                 <tr>
-                                    <th className="px-8 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Timestamp</th>
-                                    <th className="px-8 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Actor</th>
-                                    <th className="px-8 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Action</th>
-                                    <th className="px-8 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Module</th>
-                                    <th className="px-8 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Description</th>
-                                    <th className="px-8 py-5 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Details</th>
+                                    <th className="px-4 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Timestamp</th>
+                                    <th className="px-4 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Actor</th>
+                                    <th className="px-4 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Action</th>
+                                    <th className="px-4 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Module</th>
+                                    <th className="px-4 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Description</th>
+                                    <th className="px-4 py-5 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Details</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50 bg-white">
@@ -136,29 +137,35 @@ const AuditLogViewer = () => {
                                         <td colSpan="6" className="py-20 text-center text-slate-400 italic">No activity recorded for this criteria.</td>
                                     </tr>
                                 ) : logs.map(log => (
-                                    <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-8 py-5 text-xs text-slate-400 font-medium whitespace-nowrap">
+                                    <tr key={log.id} onClick={() => setSelectedLog(log)} className="hover:bg-slate-50 transition-colors cursor-pointer">
+                                        <td className="px-4 py-4 text-xs text-slate-400 font-medium whitespace-nowrap">
                                             {new Date(log.created_at).toLocaleString()}
                                         </td>
-                                        <td className="px-8 py-5">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[10px]">{log.user_name?.charAt(0) || 'S'}</div>
-                                                <span className="text-sm font-bold text-slate-900">{log.user_name || 'System'}</span>
+                                        <td className="px-4 py-4">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[10px] flex-shrink-0">{log.user_name?.charAt(0) || 'S'}</div>
+                                                <span className="text-xs font-bold text-slate-900 leading-tight">{log.user_name || 'System'}</span>
                                             </div>
                                         </td>
-                                        <td className="px-8 py-5">
-                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${log.action === 'CREATE' ? 'bg-emerald-50 text-emerald-600' :
-                                                log.action === 'UPDATE' ? 'bg-blue-50 text-blue-600' :
-                                                    log.action === 'DELETE' ? 'bg-red-50 text-red-600' :
-                                                        'bg-blue-50 text-blue-600'
-                                                }`}>
+                                        <td className="px-4 py-4">
+                                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${
+                                                log.action === 'CREATE' ? 'bg-emerald-50 text-emerald-600' :
+                                                log.action === 'UPDATE' || log.action?.includes('UPDATE') ? 'bg-blue-50 text-blue-600' :
+                                                log.action === 'DELETE' ? 'bg-red-50 text-red-600' :
+                                                log.action?.includes('GOVERNANCE') ? 'bg-purple-50 text-purple-600' :
+                                                log.action?.includes('LEAVE') ? 'bg-amber-50 text-amber-600' :
+                                                'bg-slate-50 text-slate-600'
+                                            }`}>
                                                 {log.action}
                                             </span>
                                         </td>
-                                        <td className="px-8 py-5 text-sm text-slate-500 font-medium">{log.module}</td>
-                                        <td className="px-8 py-5 text-sm text-slate-600 font-medium max-w-xs truncate">{log.description}</td>
-                                        <td className="px-8 py-5 text-right">
-                                            <button className="text-slate-300 hover:text-blue-600 transition-colors"><ExternalLink size={16} /></button>
+                                        <td className="px-4 py-4 text-xs text-slate-500 font-medium">{log.module}</td>
+                                        <td className="px-4 py-4 text-xs text-slate-600 font-medium max-w-[180px] truncate">{log.description}</td>
+                                        <td className="px-4 py-4 text-center">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setSelectedLog(log); }}
+                                                className="p-2 rounded-xl text-slate-300 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                                            ><ExternalLink size={14} /></button>
                                         </td>
                                     </tr>
                                 ))}
@@ -180,6 +187,52 @@ const AuditLogViewer = () => {
                     </div>
                 </div>
             </main>
+
+            {/* Detail Modal */}
+            {selectedLog && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-in fade-in duration-300" onClick={() => setSelectedLog(null)}>
+                    <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 animate-in zoom-in duration-300" onClick={e => e.stopPropagation()}>
+                        <div className="p-8 bg-slate-950 text-white flex justify-between items-center">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">Forensic Detail</p>
+                                <h2 className="text-xl font-black uppercase tracking-tight">{selectedLog.action}</h2>
+                                <p className="text-slate-300 text-xs mt-1">{selectedLog.module} · {new Date(selectedLog.created_at).toLocaleString()}</p>
+                            </div>
+                            <button onClick={() => setSelectedLog(null)} className="p-3 bg-white/10 hover:bg-white/20 rounded-2xl transition-all">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                        <div className="p-8 space-y-6 max-h-[60vh] overflow-y-auto">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-slate-50 rounded-2xl p-4">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Actor</p>
+                                    <p className="font-bold text-slate-900 text-sm">{selectedLog.user_name || 'System'}</p>
+                                    <p className="text-[10px] text-slate-400">{selectedLog.user_email || ''}</p>
+                                </div>
+                                <div className="bg-slate-50 rounded-2xl p-4">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">IP Address</p>
+                                    <p className="font-bold text-slate-900 text-sm font-mono">{selectedLog.ip_address || '—'}</p>
+                                </div>
+                            </div>
+                            {selectedLog.new_values && (
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-2">New Values</p>
+                                    <pre className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 text-xs font-mono text-emerald-900 overflow-x-auto whitespace-pre-wrap">{JSON.stringify(selectedLog.new_values, null, 2)}</pre>
+                                </div>
+                            )}
+                            {selectedLog.old_values && (
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-rose-600 mb-2">Old Values</p>
+                                    <pre className="bg-rose-50 border border-rose-100 rounded-2xl p-4 text-xs font-mono text-rose-900 overflow-x-auto whitespace-pre-wrap">{JSON.stringify(selectedLog.old_values, null, 2)}</pre>
+                                </div>
+                            )}
+                            {!selectedLog.new_values && !selectedLog.old_values && (
+                                <p className="text-slate-400 italic text-sm text-center py-8">No detailed payload recorded for this action.</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -117,10 +117,10 @@ const WelfareLedger = () => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
                     <div className="card-premium p-8 bg-slate-900 text-white relative overflow-hidden group">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-primary-600/20 blur-3xl -mr-16 -mt-16 group-hover:bg-primary-600/30 transition-colors"></div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">Available Balance</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 mb-2">Available Balance</p>
                         <div className="flex items-end justify-between">
-                            <h2 className="text-4xl font-black tabular-nums tracking-tighter">
-                                <span className="text-sm text-slate-500 mr-2">LKR</span>
+                            <h2 className="text-4xl font-black tabular-nums tracking-tighter text-white">
+                                <span className="text-sm text-slate-400 mr-2">LKR</span>
                                 {ledger.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </h2>
                             <div className="p-3 bg-white/10 rounded-2xl text-primary-400">

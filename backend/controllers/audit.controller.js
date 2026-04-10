@@ -13,7 +13,23 @@ const getAuditLogs = async (req, res) => {
         const effectiveTo = to_date || dateTo;
 
         let query = `
-            SELECT al.*, u.name as user_name 
+            SELECT 
+                al.id,
+                al.user_id,
+                al.action,
+                al.entity AS module,
+                al.entity_id,
+                al.old_values,
+                al.new_values,
+                al.ip_address,
+                al.timestamp,
+                al.timestamp as created_at,
+                u.name as user_name,
+                u.email as user_email,
+                CASE 
+                    WHEN al.new_values IS NOT NULL THEN CONCAT(al.action, ' on ', al.entity, COALESCE(' #' || al.entity_id::text, ''))
+                    ELSE CONCAT(al.action, ' on ', al.entity)
+                END as description
             FROM audit_logs al
             LEFT JOIN users u ON al.user_id = u.id
             WHERE 1=1
@@ -46,18 +62,18 @@ const getAuditLogs = async (req, res) => {
         }
 
         if (effectiveFrom) {
-            query += ` AND al.created_at >= $${paramCount}`;
+            query += ` AND al.timestamp >= $${paramCount}`;
             params.push(effectiveFrom);
             paramCount++;
         }
 
         if (effectiveTo) {
-            query += ` AND al.created_at <= $${paramCount}`;
+            query += ` AND al.timestamp <= $${paramCount}`;
             params.push(`${effectiveTo} 23:59:59`); // End of day
             paramCount++;
         }
 
-        query += ` ORDER BY al.created_at DESC LIMIT $${paramCount}`;
+        query += ` ORDER BY al.timestamp DESC LIMIT $${paramCount}`;
         params.push(limit);
 
         const result = await db.query(query, params);

@@ -155,7 +155,31 @@ const Dashboard = () => {
                     latestPayroll: latestMonth,
                     pendingFinancial: financialPending,
                     myPerformance: myPerfMarks,
-                    attendanceIssues: Array.isArray(myAttendance) ? myAttendance.filter(a => a.status === 'Absent' || a.status === 'Late') : []
+                    attendanceIssues: Array.isArray(myAttendance) ? myAttendance.filter(a => {
+                        const isLateArrival = (time) => {
+                            if (!time || time === '--:--') return false;
+                            const m = time.match(/^(\d{1,2}):(\d{2})/);
+                            if (!m) return false;
+                            return (parseInt(m[1]) * 60 + parseInt(m[2])) > 510; // 08:30
+                        };
+                        const isEarlyDeparture = (time) => {
+                            if (!time || time === '--:--') return false;
+                            const m = time.match(/^(\d{1,2}):(\d{2})/);
+                            if (!m) return false;
+                            return (parseInt(m[1]) * 60 + parseInt(m[2])) < 991; // 16:31
+                        };
+
+                        if (a.status === 'Absent') return true;
+                        if (a.status === 'Incomplete') {
+                            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
+                            const attDateStr = new Date(a.date).toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
+                            return attDateStr < todayStr;
+                        }
+                        if (a.status === 'Present' || a.status === 'Late') {
+                            return isLateArrival(a.clock_in) || isEarlyDeparture(a.clock_out);
+                        }
+                        return false;
+                    }) : []
                 });
 
             } catch (error) {
@@ -323,7 +347,7 @@ const Dashboard = () => {
                     <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group">
                         <div className="flex flex-col items-center">
                             <div className="relative mb-4 group/avatar cursor-pointer" onClick={handleUploadClick}>
-                                <div className="w-20 h-20 rounded-2xl bg-primary-600 overflow-hidden shadow-xl ring-4 ring-slate-50 group-hover/avatar:scale-105 transition-all duration-500 relative">
+                                <div className="w-24 h-24 rounded-2xl bg-primary-600 overflow-hidden shadow-xl ring-4 ring-slate-50 group-hover/avatar:scale-105 transition-all duration-500 relative">
                                     {uploading && (
                                         <div className="absolute inset-0 bg-primary-900/60 backdrop-blur-md z-[20] flex items-center justify-center">
                                             <Loader2 size={24} className="text-white animate-spin" />
@@ -334,7 +358,7 @@ const Dashboard = () => {
                                     </div>
                                      {user.profile_picture ? (
                                         <img
-                                            src={user.profile_picture.startsWith('http') ? user.profile_picture : `${BASE_URL}${user.profile_picture}`}
+                                            src={user.profile_picture.startsWith('http') || user.profile_picture.startsWith('data:') ? user.profile_picture : `${BASE_URL}${user.profile_picture}`}
                                             alt={user.name}
                                             className="w-full h-full object-cover"
                                         />

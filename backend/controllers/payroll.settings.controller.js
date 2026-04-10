@@ -204,6 +204,23 @@ const updateEmployeeStructure = async (req, res) => {
                 }
             }
 
+            // Identify DELETED components (components that exist in DB but not in the submitted array)
+            const submittedComponentIds = components.map(c => parseInt(c.component_id));
+            const existingRes = await db.query('SELECT component_id, amount, quantity, installments_remaining FROM employee_salary_structure WHERE employee_id = $1 AND is_locked = false', [employee_id]);
+            
+            for (const existing of existingRes.rows) {
+                if (!submittedComponentIds.includes(parseInt(existing.component_id))) {
+                    changedComponents.push({
+                        component_id: existing.component_id,
+                        action: 'DELETE',
+                        amount: 0,
+                        quantity: 0,
+                        installments_remaining: null,
+                        old_values: existing
+                    });
+                }
+            }
+
             if (changedComponents.length > 0) {
                 await db.query(
                     `INSERT INTO pending_changes (entity, entity_id, field_name, new_value, requested_by, reason, status)
@@ -508,8 +525,8 @@ const getConsolidatedBaseline = async (req, res) => {
                         statusDetail = `Monthly override approved: LKR ${parseFloat(override.amount).toLocaleString()}`;
                         displayAmount = parseFloat(override.amount) || displayAmount;
                     } else if (override.status === 'Rejected') {
-                        status = 'Rejected';
-                        statusDetail = `Monthly override rejected: ${override.reason || 'No reason specified'}`;
+                        // Skip overrides that are rejected; the code will proceed to use permanent baseline or skip
+                        continue; 
                     }
                 }
 
@@ -560,7 +577,8 @@ const getConsolidatedBaseline = async (req, res) => {
                 (ov.component_name.toLowerCase().includes('fuel') && c.name.toLowerCase().includes('fuel'))
             );
             
-            if (!isAlreadyIncluded) {
+                if (ov.status === 'Rejected') continue; // Skip rejected overrides
+
                 const isApplied = processedEmpIds.has(ov.employee_id);
                 emp.components.push({
                     id: ov.component_id,
@@ -568,10 +586,9 @@ const getConsolidatedBaseline = async (req, res) => {
                     type: (ov.component_name || '').toLowerCase().includes('deduction') ? 'Deduction' : 'Earning',
                     amount: parseFloat(ov.amount) || 0,
                     quantity: parseFloat(ov.quantity) || 0,
-                    status: isApplied ? 'Confirmed' : (ov.status === 'Approved' ? 'Approved – Not Yet Processed' : (ov.status === 'Rejected' ? 'Rejected' : 'Pending Approval')),
+                    status: isApplied ? 'Confirmed' : (ov.status === 'Approved' ? 'Approved – Not Yet Processed' : 'Pending Approval'),
                     status_detail: `Monthly Governance: ${ov.status} (${ov.reason || 'No details'})`
                 });
-            }
         }
 
         // 6. Append manual/financial requests as separate pending items
@@ -585,7 +602,7 @@ const getConsolidatedBaseline = async (req, res) => {
                 (manual.component_name.toLowerCase().includes('fuel') && c.name.toLowerCase().includes('fuel'))
             );
 
-            if (!isAlreadyIncluded) {
+            if (!isAlreadyIncluded && manual.status !== 'Rejected') {
                 const isApplied = processedEmpIds.has(manual.employee_id);
                 const isDeduction = manual.component_name.toLowerCase().includes('advance') || 
                                     manual.component_name.toLowerCase().includes('loan') || 
@@ -597,15 +614,15 @@ const getConsolidatedBaseline = async (req, res) => {
                     type: isDeduction ? 'Deduction' : 'Earning',
                     amount: parseFloat(manual.amount) || 0,
                     quantity: 0,
-                    status: isApplied ? 'Confirmed' : (manual.status === 'Approved' ? 'Approved – Not Yet Processed' : `Pending for Approval`),
+                    status: isApplied ? 'Confirmed' : (manual.status === 'Approved' ? 'Approved – Not Yet Processed' : 'Pending Approval'),
                     status_detail: manual.status_detail || `Financial request status: ${manual.status}`
                 });
             }
         }
 
         res.status(200).json({ month: currentMonth, employees: Object.values(empMap).map(emp => {
-            const earnings = emp.components.filter(c => c.type === 'Earning').reduce((s, c) => s + c.amount, 0);
-            const deductions = emp.components.filter(c => c.type === 'Deduction').reduce((s, c) => s + c.amount, 0);
+            const earnings = emp.components.filter(c => c.type === 'Earning' && c.status !== 'Rejected').reduce((s, c) => s + c.amount, 0);
+            const deductions = emp.components.filter(c => c.type === 'Deduction' && c.status !== 'Rejected').reduce((s, c) => s + c.amount, 0);
             return { ...emp, total_earnings: earnings, total_deductions: deductions };
         })});
     } catch (error) {

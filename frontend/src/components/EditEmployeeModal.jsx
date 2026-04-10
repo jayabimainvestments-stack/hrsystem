@@ -184,7 +184,7 @@ const EditEmployeeModal = ({ employee, onClose, onEmployeeUpdated }) => {
                                         <img src={picPreview} alt="Preview" className="w-full h-full object-cover" />
                                     ) : employee.profile_picture ? (
                                         <img
-                                            src={employee.profile_picture.startsWith('http') ? employee.profile_picture : `${BASE_URL}${employee.profile_picture}`}
+                                            src={employee.profile_picture.startsWith('http') || employee.profile_picture.startsWith('data:') ? employee.profile_picture : `${BASE_URL}${employee.profile_picture}`}
                                             alt={employee.name}
                                             className="w-full h-full object-cover"
                                         />

@@ -161,7 +161,7 @@ const EmployeeProfile = ({ isMe }) => {
                             <div className="h-24 w-24 bg-blue-600 rounded-3xl overflow-hidden flex items-center justify-center text-white shadow-xl shadow-blue-100 ring-4 ring-white">
                                 {employee.profile_picture ? (
                                     <img
-                                        src={employee.profile_picture.startsWith('http') ? employee.profile_picture : `${BASE_URL}${employee.profile_picture}`}
+                                        src={employee.profile_picture.startsWith('http') || employee.profile_picture.startsWith('data:') ? employee.profile_picture : `${BASE_URL}${employee.profile_picture}`}
                                         alt={employee.name}
                                         className="w-full h-full object-cover"
                                     />

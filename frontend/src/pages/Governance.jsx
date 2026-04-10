@@ -49,19 +49,27 @@ const Governance = () => {
 
             if (change.type === 'ATTENDANCE') {
                 return (
-                    <div className="grid grid-cols-2 gap-4 mt-4 p-5 bg-blue-50/30 rounded-2xl border border-blue-100/20">
-                        <div className="space-y-1">
-                            <p className="text-[10px] font-black text-blue-600/50 uppercase tracking-widest leading-none mb-1">Proposed Correction</p>
-                            <p className="text-sm font-black text-slate-900 leading-tight">
-                                {payload.status}
-                            </p>
-                            <p className="text-[10px] font-bold text-slate-400">
-                                {payload.clock_in} — {payload.clock_out || '??:??'}
-                            </p>
-                        </div>
-                        <div className="space-y-1 border-l border-blue-100/30 pl-4">
-                            <p className="text-[10px] font-black text-blue-600/50 uppercase tracking-widest leading-none mb-1">Current State</p>
-                            <p className="text-sm font-black text-slate-400 leading-tight uppercase line-through">{change.old_value}</p>
+                    <div className="space-y-3 mt-4 p-5 bg-blue-50/30 rounded-2xl border border-blue-100/20">
+                        {change.attendance_date && (
+                            <div className="flex items-center gap-2 mb-2 pb-2 border-b border-blue-100/50">
+                                <Clock size={14} className="text-blue-500" />
+                                <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Attendance Date: {new Date(change.attendance_date).toLocaleDateString()}</span>
+                            </div>
+                        )}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <p className="text-[10px] font-black text-blue-600/50 uppercase tracking-widest leading-none mb-1">Proposed Correction</p>
+                                <p className="text-sm font-black text-slate-900 leading-tight">
+                                    {payload.status}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                    {payload.clock_in} — {payload.clock_out || '??:??'}
+                                </p>
+                            </div>
+                            <div className="space-y-1 border-l border-blue-100/30 pl-4">
+                                <p className="text-[10px] font-black text-blue-600/50 uppercase tracking-widest leading-none mb-1">Current State</p>
+                                <p className="text-sm font-black text-slate-400 leading-tight uppercase line-through">{change.old_value}</p>
+                            </div>
                         </div>
                     </div>
                 );
@@ -306,20 +314,20 @@ const Governance = () => {
                                 <Shield size={14} />
                                 <span className="text-[10px] font-black uppercase tracking-[0.2em]">Request Approvals</span>
                             </div>
-                            <h1 className="text-5xl md:text-7xl font-black tracking-tighter leading-none">
+                            <h1 className="text-5xl md:text-7xl font-black tracking-tighter leading-none text-white">
                                 Pending <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-blue-100 italic">Approvals</span>
                             </h1>
-                            <p className="max-w-xl text-slate-400 font-medium text-lg leading-relaxed">
+                            <p className="max-w-xl text-slate-300 font-medium text-lg leading-relaxed">
                                 Review and authorize sensitive fixed component modifications before they are applied.
                             </p>
                         </div>
 
-                        <div className="flex items-center gap-4 bg-white/5 backdrop-blur-3xl p-3 border border-white/5 rounded-[2rem] w-full md:w-96 group focus-within:border-blue-500/30 transition-all">
-                            <Search className="text-white/20 ml-3" size={20} />
+                        <div className="flex items-center gap-4 bg-white/10 backdrop-blur-3xl p-3 border border-white/10 rounded-[2rem] w-full md:w-96 group focus-within:border-blue-500/30 transition-all">
+                            <Search className="text-white/40 ml-3" size={20} />
                             <input
                                 type="text"
                                 placeholder="Search by requester or entity..."
-                                className="bg-transparent border-none outline-none text-sm font-bold w-full text-white placeholder:text-white/20"
+                                className="bg-transparent border-none outline-none text-sm font-bold w-full text-white placeholder:text-white/50"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />

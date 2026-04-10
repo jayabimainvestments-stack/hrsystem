@@ -16,6 +16,11 @@ echo [*] Starting local bridge server (port 7700)...
 start /min cmd /c "cd /d "%~dp0backend" && node local_bridge.js"
 timeout /t 3 >nul
 
-echo [*] Starting sync process...
+:sync_loop
+echo [*] Starting sync background process loop...
 node "%~dp0backend\local_sync.js"
-pause
+echo.
+echo [!] SYNC PROCESS STOPPED OR CRASHED!
+echo [!] Attempting to restart in 20 seconds...
+timeout /t 20
+goto sync_loop

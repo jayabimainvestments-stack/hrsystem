@@ -11,10 +11,6 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // One-time mandatory cleanup to ensure old localStorage tokens don't revive sessions
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-
         const checkLoggedIn = async () => {
             const token = sessionStorage.getItem('token');
             const storedUser = sessionStorage.getItem('user');

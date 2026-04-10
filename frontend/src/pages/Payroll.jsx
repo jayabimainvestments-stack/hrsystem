@@ -248,7 +248,7 @@ const Payroll = () => {
                             <h1 className="text-5xl font-black text-white tracking-tight flex items-center gap-4">
                                 PAYROLL <span className="text-primary-500">INTELLIGENCE</span>
                             </h1>
-                            <p className="text-slate-400 font-medium text-lg max-w-xl leading-relaxed">
+                            <p className="text-slate-300 font-medium text-lg max-w-xl leading-relaxed">
                                 Advanced treasury distribution and statutory compliance management system.
                             </p>
                         </div>

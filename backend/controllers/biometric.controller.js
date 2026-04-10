@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { reconcileLeaveBalance } = require('../services/attendance.service');
 
 // @desc    Process punch from biometric device
 // @route   POST /api/biometric/punch
@@ -152,6 +153,12 @@ const processPunch = async (req, res) => {
                     // Placeholder fill -> Clock In
                     const lateMinutes = calculateLateMinutes(punchTime, policy.work_start_time);
 
+                    // RECONCILE: If status was 'Leave', reclaim the leave balance
+                    let reclaimed = existing.leave_reclaimed;
+                    if (existing.status === 'Leave' && !existing.leave_reclaimed) {
+                        reclaimed = await reconcileLeaveBalance(db, employee.id, pDate, 'Present');
+                    }
+
                     result = await db.query(
                         `UPDATE attendance 
                          SET clock_in = $1, 
@@ -159,11 +166,12 @@ const processPunch = async (req, res) => {
                              raw_clock_out = GREATEST(COALESCE(raw_clock_out, '00:00:00'), $1),
                              status = 'Incomplete',
                              late_minutes = $3,
+                             leave_reclaimed = $4,
                              updated_at = CURRENT_TIMESTAMP 
                          WHERE id = $2 RETURNING *`,
-                        [punchTime, existing.id, lateMinutes]
+                        [punchTime, existing.id, lateMinutes, reclaimed]
                     );
-                    console.log(`[BIOMETRIC] Employee ${employee.id} Clocked-In (Placeholder) at ${punchTime} - Status: ${lateMinutes > 0 ? 'Late' : 'Incomplete'}`);
+                    console.log(`[BIOMETRIC] Employee ${employee.id} Clocked-In (Placeholder) at ${punchTime} - Reclaimed: ${reclaimed}`);
                 }
             }
         }
@@ -475,7 +483,7 @@ const runAutomatedDailyInit = async (customDate = null) => {
             const holidayName = isHoliday ? hols.rows[0].name : null;
 
             // Get all active employees
-            const empRes = await client.query('SELECT id FROM employees WHERE employment_status = \'Active\'');
+            const empRes = await client.query('SELECT id, user_id FROM employees WHERE employment_status = \'Active\'');
             const employees = empRes.rows;
 
             if (employees.length === 0) {
@@ -487,9 +495,27 @@ const runAutomatedDailyInit = async (customDate = null) => {
             let skipped = 0;
 
             for (const emp of employees) {
-                // If it's a holiday, status is 'Holiday'. Otherwise it's 'Absent'.
-                const status = isHoliday ? 'Holiday' : 'Absent';
-                const source = isHoliday ? `Company Holiday: ${holidayName}` : 'System Sync';
+                // Check if employee has an approved leave for targetDate
+                const leaveRes = await client.query(`
+                    SELECT id FROM leaves 
+                    WHERE user_id = $1 
+                    AND status = 'Approved' 
+                    AND $2::date BETWEEN start_date AND end_date
+                    LIMIT 1
+                `, [emp.user_id, targetDate]);
+                const isLeave = leaveRes.rows.length > 0;
+
+                // Priority: Holiday > Leave > Absent
+                let status = 'Absent';
+                let source = 'System Sync';
+
+                if (isHoliday) {
+                    status = 'Holiday';
+                    source = `Company Holiday: ${holidayName}`;
+                } else if (isLeave) {
+                    status = 'Leave';
+                    source = 'System Sync: Approved Leave';
+                }
 
                 // Check if record exists
                 const exists = await client.query('SELECT id FROM attendance WHERE employee_id = $1 AND date = $2', [emp.id, targetDate]);
@@ -501,8 +527,8 @@ const runAutomatedDailyInit = async (customDate = null) => {
                         [emp.id, targetDate, status, source]
                     );
                     created++;
-                } else if (isHoliday) {
-                    // Update to 'Holiday' if it was 'Absent' but now recognized as holiday
+                } else if (isHoliday || isLeave) {
+                    // Update to 'Holiday' or 'Leave' if it was 'Absent'
                     await client.query(
                         `UPDATE attendance SET status = $1, source = $2 WHERE employee_id = $3 AND date = $4 AND status = 'Absent'`,
                         [status, source, emp.id, targetDate]
