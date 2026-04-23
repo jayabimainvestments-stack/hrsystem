@@ -525,30 +525,13 @@ const getConsolidatedBaseline = async (req, res) => {
                         statusDetail = `Monthly override approved: LKR ${parseFloat(override.amount).toLocaleString()}`;
                         displayAmount = parseFloat(override.amount) || displayAmount;
                     } else if (override.status === 'Rejected') {
-                        // Skip overrides that are rejected; the code will proceed to use permanent baseline or skip
+                        // Skip overrides that are rejected
                         continue; 
                     }
                 }
 
                 if (!processedEmpIds.has(row.id)) {
                     if (status === 'Confirmed') status = 'Not Processed';
-                }
-
-                // Logic to suppress "Monthly Fuel" if ANY other fuel-related entry exists
-                const hasOtherFuel = 
-                    // Case 1: Manual Financial Request
-                    manualRes.rows.some(m => 
-                        m.employee_id === row.id && 
-                        m.component_name.toLowerCase().includes('fuel')
-                    ) ||
-                    // Case 2: Monthly Override (that is not this permanent one)
-                    Object.values(overrideMap).some(ov => 
-                        ov.employee_id === row.id && 
-                        ov.component_name.toLowerCase().includes('fuel')
-                    );
-
-                if (row.component_name.toLowerCase().includes('monthly fuel') && hasOtherFuel) {
-                    continue; 
                 }
 
                 empMap[row.id].components.push({
@@ -574,10 +557,12 @@ const getConsolidatedBaseline = async (req, res) => {
             // Check if already added via permanent loop (by ID or Name similarity for Fuel)
             const isAlreadyIncluded = emp.components.some(c => 
                 c.id === ov.component_id || 
-                (ov.component_name.toLowerCase().includes('fuel') && c.name.toLowerCase().includes('fuel'))
+                (ov.component_name.toLowerCase().includes('fuel') && (c.name || '').toLowerCase().includes('fuel'))
             );
+
+            if (isAlreadyIncluded) continue; // FIX: Skip if already handled in the first loop
             
-                if (ov.status === 'Rejected') continue; // Skip rejected overrides
+            if (ov.status === 'Rejected') continue; // Skip rejected overrides
 
                 const isApplied = processedEmpIds.has(ov.employee_id);
                 emp.components.push({
@@ -608,10 +593,13 @@ const getConsolidatedBaseline = async (req, res) => {
                                     manual.component_name.toLowerCase().includes('loan') || 
                                     manual.component_name.toLowerCase().includes('deduction');
                 
+                // Final safeguard: Match types properly
+                const type = (manual.component_name.toLowerCase().includes('deduction') || isDeduction) ? 'Deduction' : 'Earning';
+
                 emp.components.push({
                     id: null,
                     name: manual.component_name,
-                    type: isDeduction ? 'Deduction' : 'Earning',
+                    type: type,
                     amount: parseFloat(manual.amount) || 0,
                     quantity: 0,
                     status: isApplied ? 'Confirmed' : (manual.status === 'Approved' ? 'Approved – Not Yet Processed' : 'Pending Approval'),

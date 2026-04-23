@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-dark: #0a0a0c;
+  --color-brand-glass: rgba(255, 255, 255, 0.03);
+  --color-brand-accent: #3b82f6;
+}
+
+:root {
+  background-color: #0a0a0c;
+  color: #fff;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  @apply bg-brand-dark text-gray-200 antialiased;
+}
+
+/* Define glass as a standard CSS utility */
+.glass {
+  background-color: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-card {
+  @apply rounded-2xl p-6 shadow-2xl;
+  background-color: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-primary {
+  @apply bg-brand-accent hover:bg-blue-600 text-white px-4 py-2 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2;
+}
+
+.input-field {
+  @apply bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:border-brand-accent outline-none transition-all;
+}

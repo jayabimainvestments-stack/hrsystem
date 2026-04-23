@@ -46,13 +46,8 @@ const corsOptions = {
     allowedHeaders: ['Content-Type', 'Authorization']
 };
 
-// Rate Limiting
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 1000, // Limit each IP to 1000 requests per windowMs
-    message: 'Too many requests from this IP, please try again later.',
-    skip: (req, res) => process.env.NODE_ENV !== 'production'
-});
+// Rate Limiting (Disabled to prevent HuggingFace proxy blocking)
+// const limiter = rateLimit({ ... });
 
 // Middleware
 app.use(express.json());
@@ -66,7 +61,8 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 app.use(morgan('dev'));
-app.use(limiter); // Apply rate limiting to all requests
+// app.use(limiter); // Apply rate limiting to all requests
+
 
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

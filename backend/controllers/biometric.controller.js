@@ -144,6 +144,7 @@ const processPunch = async (req, res) => {
                                  WHEN status = 'Incomplete' THEN 'Present'
                                  ELSE status 
                              END,
+                             source = 'Biometric',
                              updated_at = CURRENT_TIMESTAMP 
                          WHERE id = $2 RETURNING *`,
                         [punchTime, existing.id]
@@ -167,6 +168,7 @@ const processPunch = async (req, res) => {
                              status = 'Incomplete',
                              late_minutes = $3,
                              leave_reclaimed = $4,
+                             source = 'Biometric',
                              updated_at = CURRENT_TIMESTAMP 
                          WHERE id = $2 RETURNING *`,
                         [punchTime, existing.id, lateMinutes, reclaimed]

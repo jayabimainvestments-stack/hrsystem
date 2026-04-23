@@ -242,8 +242,14 @@ const createPayroll = async (req, res) => {
 
         // Add Financial Requests
         for (const manual of manualRes.rows) {
-            // Skip Fuel Allowance if it's already handled by structure recalculation
-            if (hasFuelInStructure && manual.name.toLowerCase().includes('fuel')) {
+            // Check if already added (to prevent duplicates if transferred to overrides)
+            const isAlreadyIncluded = components.some(c => 
+                (c.name || '').toLowerCase().includes(manual.name.toLowerCase()) ||
+                (manual.name.toLowerCase().includes('fuel') && (c.name || '').toLowerCase().includes('fuel'))
+            );
+
+            if (isAlreadyIncluded) {
+                console.log(`[PAYROLL_ENGINE] Skipping duplicate manual request: ${manual.name} (already in overrides/structure)`);
                 continue;
             }
 
@@ -1214,10 +1220,13 @@ const getPayrollPreview = async (req, res) => {
 
         // Add Financial Requests
         for (const manual of manualRes.rows) {
-            // Skip Fuel Allowance if it's already handled by structure recalculation
-            if (hasFuelInStructurePreview && manual.name.toLowerCase().includes('fuel')) {
-                continue;
-            }
+            // Check if already added (to prevent duplicates if transferred to overrides)
+            const isAlreadyIncluded = components.some(c => 
+                (c.name || '').toLowerCase().includes(manual.name.toLowerCase()) ||
+                (manual.name.toLowerCase().includes('fuel') && (c.name || '').toLowerCase().includes('fuel'))
+            );
+
+            if (isAlreadyIncluded) continue;
 
             const isDeduction = manual.name.toLowerCase().includes('advance') || 
                                 manual.name.toLowerCase().includes('loan') || 
