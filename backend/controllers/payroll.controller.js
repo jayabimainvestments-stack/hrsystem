@@ -243,10 +243,15 @@ const createPayroll = async (req, res) => {
         // Add Financial Requests
         for (const manual of manualRes.rows) {
             // Check if already added (to prevent duplicates if transferred to overrides)
-            const isAlreadyIncluded = components.some(c => 
-                (c.name || '').toLowerCase().includes(manual.name.toLowerCase()) ||
-                (manual.name.toLowerCase().includes('fuel') && (c.name || '').toLowerCase().includes('fuel'))
-            );
+            const manualNameClean = (manual.name || '').trim().toLowerCase();
+            const isAlreadyIncluded = components.some(c => {
+                const existingNameClean = (c.name || '').trim().toLowerCase();
+                return existingNameClean === manualNameClean || 
+                       existingNameClean.includes(manualNameClean) ||
+                       manualNameClean.includes(existingNameClean) ||
+                       (manualNameClean.includes('fuel') && existingNameClean.includes('fuel')) ||
+                       (manualNameClean.includes('advance') && existingNameClean.includes('advance'));
+            });
 
             if (isAlreadyIncluded) {
                 console.log(`[PAYROLL_ENGINE] Skipping duplicate manual request: ${manual.name} (already in overrides/structure)`);
@@ -1221,10 +1226,15 @@ const getPayrollPreview = async (req, res) => {
         // Add Financial Requests
         for (const manual of manualRes.rows) {
             // Check if already added (to prevent duplicates if transferred to overrides)
-            const isAlreadyIncluded = components.some(c => 
-                (c.name || '').toLowerCase().includes(manual.name.toLowerCase()) ||
-                (manual.name.toLowerCase().includes('fuel') && (c.name || '').toLowerCase().includes('fuel'))
-            );
+            const manualNameClean = (manual.name || '').trim().toLowerCase();
+            const isAlreadyIncluded = components.some(c => {
+                const existingNameClean = (c.name || '').trim().toLowerCase();
+                return existingNameClean === manualNameClean || 
+                       existingNameClean.includes(manualNameClean) ||
+                       manualNameClean.includes(existingNameClean) ||
+                       (manualNameClean.includes('fuel') && existingNameClean.includes('fuel')) ||
+                       (manualNameClean.includes('advance') && existingNameClean.includes('advance'));
+            });
 
             if (isAlreadyIncluded) continue;
 
