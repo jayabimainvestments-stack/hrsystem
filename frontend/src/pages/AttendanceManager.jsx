@@ -605,36 +605,34 @@ const AttendanceManager = () => {
                                 </label>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                                     {[
-                                        { id: 'Present', label: 'Present', color: 'emerald', icon: <CheckCircle size={14} /> },
-                                        { id: 'Delayed Present', label: 'Late Arrived', color: 'amber', icon: <Clock size={14} /> },
-                                        { id: 'Incomplete', label: 'Incomplete', color: 'indigo', icon: <AlertCircle size={14} /> },
-                                        { id: 'Absent', label: 'Absent', color: 'rose', icon: <UserX size={14} /> },
-                                        { id: 'Leave', label: 'Leave', color: 'sky', icon: <Plane size={14} /> }
+                                        { id: 'Present', label: 'Present', color: 'emerald', icon: <CheckCircle size={16} /> },
+                                        { id: 'Delayed Present', label: 'Late Arrived', color: 'amber', icon: <Clock size={16} /> },
+                                        { id: 'Incomplete', label: 'Incomplete', color: 'indigo', icon: <AlertCircle size={16} /> },
+                                        { id: 'Absent', label: 'Absent', color: 'rose', icon: <UserX size={16} /> },
+                                        { id: 'Leave', label: 'Leave', color: 'sky', icon: <Plane size={16} /> }
                                     ].map(item => (
                                         <button
                                             key={item.id}
                                             onClick={() => setStatusSearch(statusSearch === item.id ? '' : item.id)}
-                                            className={`relative overflow-hidden px-3 py-4 rounded-[1.5rem] text-[10px] font-black uppercase tracking-[0.1em] transition-all border-2 text-center group ${
+                                            className={`relative overflow-hidden px-3 py-4 rounded-[1.25rem] text-[10px] font-black uppercase tracking-[0.05em] transition-all border-2 text-center group shadow-sm ${
                                                 statusSearch === item.id
                                                     ? `bg-${item.color}-600 text-white border-${item.color}-600 shadow-xl shadow-${item.color}-200/50 scale-[0.98]`
-                                                    : `bg-white text-slate-500 border-slate-100/80 hover:border-${item.color}-300 hover:text-${item.color}-700 hover:bg-${item.color}-50/30 hover:shadow-lg hover:shadow-${item.color}-100/50`
+                                                    : `bg-white text-slate-600 border-slate-100 hover:border-${item.color}-200 hover:text-${item.color}-700 hover:bg-slate-50 hover:shadow-md`
                                             }`}
                                         >
                                             <div className="flex flex-col items-center gap-1.5 relative z-10">
                                                 <span className={`${
                                                     statusSearch === item.id 
-                                                        ? 'text-white scale-110' 
-                                                        : `text-${item.color}-500/60 group-hover:text-${item.color}-500 group-hover:scale-110`
+                                                        ? 'text-white' 
+                                                        : `text-${item.color}-500 group-hover:scale-110`
                                                 } transition-all duration-300`}>
                                                     {item.icon}
                                                 </span>
-                                                <span className="leading-tight">{item.label}</span>
+                                                <span className={`leading-tight ${statusSearch === item.id ? 'opacity-100' : 'opacity-80 group-hover:opacity-100'}`}>{item.label}</span>
                                             </div>
                                             
-                                            {/* Decorative Background Element */}
-                                            {statusSearch === item.id && (
-                                                <div className={`absolute -right-2 -bottom-2 w-12 h-12 bg-white/10 rounded-full blur-xl`}></div>
-                                            )}
+                                            {/* Subtle Gloss Effect */}
+                                            <div className={`absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none`}></div>
                                         </button>
                                     ))}
                                 </div>
