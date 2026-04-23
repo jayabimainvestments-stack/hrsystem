@@ -3,7 +3,8 @@ import api from '../services/api';
 import Navbar from '../components/Navbar';
 import {
     Calendar, Clock, User, Users, Download, Search,
-    ChevronLeft, ChevronRight, Plus, Tablet, Upload, Save, X, RefreshCw, Trash2, Activity, Fingerprint
+    ChevronLeft, ChevronRight, Plus, Tablet, Upload, Save, X, RefreshCw, Trash2, Activity, Fingerprint,
+    CheckCircle, AlertCircle, HelpCircle, UserX, Plane
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -602,29 +603,38 @@ const AttendanceManager = () => {
                                     <Activity size={12} className="text-blue-500" />
                                     Status Overlay
                                 </label>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                                     {[
-                                        { id: 'Present', label: 'Present', color: 'emerald' },
-                                        { id: 'Delayed Present', label: 'Delayed Present', color: 'rose' },
-                                        { id: 'Incomplete', label: 'Incomplete', color: 'indigo' },
-                                        { id: 'Absent', label: 'Absent', color: 'rose' },
-                                        { id: 'Leave', label: 'Leave', color: 'sky' }
+                                        { id: 'Present', label: 'Present', color: 'emerald', icon: <CheckCircle size={14} /> },
+                                        { id: 'Delayed Present', label: 'Late Arrived', color: 'amber', icon: <Clock size={14} /> },
+                                        { id: 'Incomplete', label: 'Incomplete', color: 'indigo', icon: <AlertCircle size={14} /> },
+                                        { id: 'Absent', label: 'Absent', color: 'rose', icon: <UserX size={14} /> },
+                                        { id: 'Leave', label: 'Leave', color: 'sky', icon: <Plane size={14} /> }
                                     ].map(item => (
                                         <button
                                             key={item.id}
                                             onClick={() => setStatusSearch(statusSearch === item.id ? '' : item.id)}
-                                            className={`px-3 py-2.5 rounded-2xl text-[9px] font-black uppercase tracking-[0.1em] transition-all border-2 text-center group ${
+                                            className={`relative overflow-hidden px-3 py-4 rounded-[1.5rem] text-[10px] font-black uppercase tracking-[0.1em] transition-all border-2 text-center group ${
                                                 statusSearch === item.id
-                                                    ? `bg-${item.color}-600 text-white border-${item.color}-600 shadow-lg shadow-${item.color}-200/50 scale-95`
-                                                    : `bg-white text-slate-400 border-slate-50 hover:border-${item.color}-200 hover:text-${item.color}-600 hover:shadow-md hover:shadow-${item.color}-50/50`
+                                                    ? `bg-${item.color}-600 text-white border-${item.color}-600 shadow-xl shadow-${item.color}-200/50 scale-[0.98]`
+                                                    : `bg-white text-slate-500 border-slate-100/80 hover:border-${item.color}-300 hover:text-${item.color}-700 hover:bg-${item.color}-50/30 hover:shadow-lg hover:shadow-${item.color}-100/50`
                                             }`}
                                         >
-                                            <div className="flex flex-col items-center gap-0.5">
-                                                <span className={`${statusSearch === item.id ? 'text-white' : `text-${item.color}-500/40 group-hover:text-${item.color}-500`} transition-colors`}>
-                                                    <Activity size={10} />
+                                            <div className="flex flex-col items-center gap-1.5 relative z-10">
+                                                <span className={`${
+                                                    statusSearch === item.id 
+                                                        ? 'text-white scale-110' 
+                                                        : `text-${item.color}-500/60 group-hover:text-${item.color}-500 group-hover:scale-110`
+                                                } transition-all duration-300`}>
+                                                    {item.icon}
                                                 </span>
-                                                {item.label}
+                                                <span className="leading-tight">{item.label}</span>
                                             </div>
+                                            
+                                            {/* Decorative Background Element */}
+                                            {statusSearch === item.id && (
+                                                <div className={`absolute -right-2 -bottom-2 w-12 h-12 bg-white/10 rounded-full blur-xl`}></div>
+                                            )}
                                         </button>
                                     ))}
                                 </div>
