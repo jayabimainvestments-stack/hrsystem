@@ -602,7 +602,7 @@ const getConsolidatedBaseline = async (req, res) => {
                     type: type,
                     amount: parseFloat(manual.amount) || 0,
                     quantity: 0,
-                    status: isApplied ? 'Confirmed' : (manual.status === 'Approved' ? 'Approved – Not Yet Processed' : 'Pending Approval'),
+                    status: isApplied ? 'Confirmed' : (manual.status === 'Transferred' || manual.status === 'Approved' ? 'Approved – Not Yet Processed' : 'Pending Approval'),
                     status_detail: manual.status_detail || `Financial request status: ${manual.status}`
                 });
             }

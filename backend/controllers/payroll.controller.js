@@ -199,7 +199,7 @@ const createPayroll = async (req, res) => {
                 (elem->>'reason') as reason
             FROM financial_requests fr,
             jsonb_array_elements(fr.data) elem
-            WHERE (elem->>'employee_id')::int = $1 AND fr.month = $2 AND fr.status = 'Approved'
+            WHERE (elem->>'employee_id')::int = $1 AND fr.month = $2 AND fr.status IN ('Approved', 'Transferred')
         `, [employee.id, datePrefix]).catch(() => ({ rows: [] }));
 
         // 5. MERGE LOGIC (Structure + Overrides)
@@ -1190,7 +1190,7 @@ const getPayrollPreview = async (req, res) => {
                 (elem->>'reason') as reason
             FROM financial_requests fr,
             jsonb_array_elements(fr.data) elem
-            WHERE (elem->>'employee_id')::int = $1 AND fr.month = $2 AND fr.status = 'Approved'
+            WHERE (elem->>'employee_id')::int = $1 AND fr.month = $2 AND fr.status IN ('Approved', 'Transferred')
         `, [employee.id, datePrefix]).catch(() => ({ rows: [] }));
 
         // 5. MERGE LOGIC (Structure + Overrides)

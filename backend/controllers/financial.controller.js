@@ -91,10 +91,10 @@ const approveRequest = async (req, res) => {
                 return res.status(403).json({ message: 'You cannot approve your own request. Segregation of duties required.' });
             }
 
-            // 2. Update Status
+            // 2. Update Status to 'Transferred' (since it moves to overrides)
             await client.query(
                 'UPDATE financial_requests SET status = $1, approved_by = $2, updated_at = NOW() WHERE id = $3',
-                ['Approved', req.user.id, id]
+                ['Transferred', req.user.id, id]
             );
 
             // 3. Process Data via Shared Service
