@@ -87,6 +87,10 @@ const AttendanceAllowance = () => {
     };
 
     const approveDeduction = async (id) => {
+        if (!id) {
+            toast.error('Save the deduction first before approving');
+            return;
+        }
         if (!confirm(`Are you sure you want to approve this deduction? This will process it to Global Compensation.`)) return;
 
         try {
@@ -323,9 +327,9 @@ const AttendanceAllowance = () => {
                                                 )}
 
                                                 {/* APPROVE BUTTON */}
-                                                {(emp.status === 'Pending' || emp.status === 'Ignored') && emp.created_by !== user.id && emp.total_amount > 0 && (
+                                                {emp.deduction_id && (emp.status === 'Pending' || emp.status === 'Ignored') && emp.created_by !== user.id && emp.total_amount > 0 && (
                                                     <button
-                                                        onClick={() => approveDeduction(emp.deduction_id)}
+                                                        onClick={() => emp.deduction_id && approveDeduction(emp.deduction_id)}
                                                         className="p-2 text-emerald-600 bg-emerald-50 rounded-xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
                                                         title="Approve & Process (Final)"
                                                     >

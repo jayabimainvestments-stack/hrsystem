@@ -49,6 +49,18 @@ const App = () => {
     total_collected: 0
   });
 
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await axios.get('http://localhost:5001/api/dashboard/summary');
+        setStats(response.data);
+      } catch (err) {
+        console.error('Error fetching stats:', err);
+      }
+    };
+    fetchStats();
+  }, []);
+
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'customers', label: 'Customers', icon: Users },
@@ -134,10 +146,10 @@ const App = () => {
             {/* Stats Grid */}
             <div className="grid grid-cols-4 gap-6 mb-10">
               {[
-                { label: 'Total Collections', value: 'LKR 842K', trend: '+12.5%', icon: Wallet, color: 'text-blue-500' },
-                { label: 'Active Loans', value: '124', trend: '+3', icon: HandCoins, color: 'text-purple-500' },
-                { label: 'Customers', value: '3,842', trend: '+24', icon: Users, color: 'text-green-500' },
-                { label: 'Loan Stock', value: 'LKR 12.4M', trend: '+5.2%', icon: BarChart3, color: 'text-orange-500' },
+                { label: 'Total Collections', value: `LKR ${(parseFloat(stats.total_collected) || 0).toLocaleString()}`, trend: 'Live', icon: Wallet, color: 'text-blue-500' },
+                { label: 'Active Loans', value: stats.active_loans, trend: 'Synced', icon: HandCoins, color: 'text-purple-500' },
+                { label: 'Customers', value: stats.total_customers, trend: 'Total', icon: Users, color: 'text-green-500' },
+                { label: 'Loan Stock', value: `LKR ${(parseFloat(stats.total_disbursed) || 0).toLocaleString()}`, trend: 'Snapshot', icon: BarChart3, color: 'text-orange-500' },
               ].map((stat, i) => (
                 <div key={i} className="glass-card relative overflow-hidden group">
                   <div className="flex justify-between items-start mb-4">

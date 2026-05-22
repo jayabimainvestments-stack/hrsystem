@@ -457,7 +457,7 @@ const getConsolidatedBaseline = async (req, res) => {
 
         // 2. Get monthly overrides for current month (to check pending/approved)
         const overridesRes = await db.query(`
-            SELECT mo.employee_id, mo.component_id, mo.amount, mo.quantity, mo.status, mo.reason, sc.name as component_name
+            SELECT mo.employee_id, mo.component_id, mo.amount, mo.quantity, mo.status, mo.reason, sc.name as component_name, sc.type as component_type
             FROM monthly_salary_overrides mo
             JOIN salary_components sc ON mo.component_id = sc.id
             WHERE mo.month = $1
@@ -568,7 +568,7 @@ const getConsolidatedBaseline = async (req, res) => {
                 emp.components.push({
                     id: ov.component_id,
                     name: ov.component_name || 'Variable component',
-                    type: (ov.component_name || '').toLowerCase().includes('deduction') ? 'Deduction' : 'Earning',
+                    type: ov.component_type || 'Earning',
                     amount: parseFloat(ov.amount) || 0,
                     quantity: parseFloat(ov.quantity) || 0,
                     status: isApplied ? 'Confirmed' : (ov.status === 'Approved' ? 'Approved – Not Yet Processed' : 'Pending Approval'),
@@ -609,8 +609,8 @@ const getConsolidatedBaseline = async (req, res) => {
         }
 
         res.status(200).json({ month: currentMonth, employees: Object.values(empMap).map(emp => {
-            const earnings = emp.components.filter(c => c.type === 'Earning' && c.status !== 'Rejected').reduce((s, c) => s + c.amount, 0);
-            const deductions = emp.components.filter(c => c.type === 'Deduction' && c.status !== 'Rejected').reduce((s, c) => s + c.amount, 0);
+            const earnings = emp.components.filter(c => c.type === 'Earning' && (c.status !== 'Rejected' && c.status !== 'Pending Approval')).reduce((s, c) => s + c.amount, 0);
+            const deductions = emp.components.filter(c => c.type === 'Deduction' && (c.status !== 'Rejected' && c.status !== 'Pending Approval')).reduce((s, c) => s + c.amount, 0);
             return { ...emp, total_earnings: earnings, total_deductions: deductions };
         })});
     } catch (error) {

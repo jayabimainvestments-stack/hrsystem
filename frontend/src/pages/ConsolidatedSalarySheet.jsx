@@ -144,7 +144,7 @@ const ConsolidatedSalarySheet = () => {
                                 ) : data.length === 0 ? (
                                     <tr>
                                         <td colSpan="16" className="py-20 text-center border border-slate-300 text-slate-400 italic">
-                                            No approved payroll records found for this period.
+                                            No Reviewed or Approved payroll records found for this period.
                                         </td>
                                     </tr>
                                 ) : (

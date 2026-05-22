@@ -26,19 +26,13 @@ const LoanManager = () => {
         setLoading(true);
         try {
             const [loansRes, custRes, prodRes] = await Promise.all([
-                axios.get(`${API_BASE}/dashboard/summary`), // Placeholder for real loans list
+                axios.get(`${API_BASE}/loans`),
                 axios.get(`${API_BASE}/customers`),
                 axios.get(`${API_BASE}/loan-products`)
             ]);
-            // For now, let's just get the customers and products for the modal
+            setLoans(loansRes.data);
             setCustomers(custRes.data);
             setProducts(prodRes.data);
-            
-            // Mocking a few active loans for the UI list
-            setLoans([
-                { id: 2001, customer_name: 'Nimal Siripala', amount: 50000, balance: 42500, next_due: '2026-04-29', status: 'Active' },
-                { id: 2002, customer_name: 'Kumara Perera', amount: 30000, balance: 28000, next_due: '2026-04-30', status: 'Active' }
-            ]);
         } catch (err) {
             console.error('Error fetching loan data:', err);
         } finally {
@@ -84,9 +78,10 @@ const LoanManager = () => {
                         <thead className="bg-white/5 text-gray-400 text-xs uppercase tracking-widest">
                             <tr>
                                 <th className="px-6 py-4 font-semibold">Loan ID / Customer</th>
+                                <th className="px-6 py-4 font-semibold">Type</th>
                                 <th className="px-6 py-4 font-semibold text-right">Disbursed Amount</th>
                                 <th className="px-6 py-4 font-semibold text-right">Outstanding</th>
-                                <th className="px-6 py-4 font-semibold text-center">Next Due</th>
+                                <th className="px-6 py-4 font-semibold text-right text-orange-400">Arrears</th>
                                 <th className="px-6 py-4 font-semibold text-center">Status</th>
                             </tr>
                         </thead>
@@ -94,24 +89,30 @@ const LoanManager = () => {
                             {loans.map((loan) => (
                                 <tr key={loan.id} className="hover:bg-white/[0.02] transition-colors group cursor-pointer">
                                     <td className="px-6 py-4">
-                                        <p className="text-xs font-mono text-gray-500">#{loan.id}</p>
+                                        <p className="text-xs font-mono text-brand-accent mb-1">{loan.source_loan_id || `#${loan.id}`}</p>
                                         <p className="font-bold group-hover:text-brand-accent transition-colors">{loan.customer_name}</p>
                                     </td>
-                                    <td className="px-6 py-4 text-right font-medium">LKR {loan.amount.toLocaleString()}</td>
+                                    <td className="px-6 py-4">
+                                        <span className="text-xs bg-white/5 px-2 py-1 rounded text-gray-400 font-medium whitespace-nowrap">
+                                            {loan.loan_type || 'General'}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 text-right font-medium">LKR {(parseFloat(loan.principal_amount) || 0).toLocaleString()}</td>
                                     <td className="px-6 py-4 text-right">
-                                        <p className="font-bold text-orange-400">LKR {loan.balance.toLocaleString()}</p>
+                                        <p className="font-bold text-white">LKR {(parseFloat(loan.total_payable) || 0).toLocaleString()}</p>
                                         <div className="w-full bg-white/5 h-1 rounded-full mt-2 overflow-hidden">
-                                            <div className="bg-brand-accent h-full" style={{ width: `${(1 - loan.balance/loan.amount) * 100}%` }} />
+                                            <div className="bg-brand-accent h-full" style={{ width: loan.principal_amount > 0 ? `${Math.max(0, Math.min(100, (1 - loan.total_payable/loan.principal_amount) * 100))}%` : '0%' }} />
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 text-center">
-                                        <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
-                                            <Calendar size={14} />
-                                            {loan.next_due}
-                                        </div>
+                                    <td className="px-6 py-4 text-right">
+                                        <p className={`font-bold ${parseFloat(loan.arrears_amount) > 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                                            LKR {(parseFloat(loan.arrears_amount) || 0).toLocaleString()}
+                                        </p>
                                     </td>
                                     <td className="px-6 py-4 text-center">
-                                        <span className="text-xs font-bold text-blue-400 bg-blue-400/10 px-2 py-1 rounded-lg">
+                                        <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
+                                            loan.status === 'Active' ? 'text-green-400 bg-green-400/10' : 'text-blue-400 bg-blue-400/10'
+                                        }`}>
                                             {loan.status}
                                         </span>
                                     </td>

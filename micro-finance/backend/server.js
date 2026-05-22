@@ -147,7 +147,7 @@ app.get('/api/loans', async (req, res) => {
             SELECT l.*, c.full_name as customer_name, cp.name as product_name
             FROM mf_loans l
             JOIN mf_customers c ON l.customer_id = c.id
-            JOIN mf_loan_products cp ON l.product_id = cp.id
+            LEFT JOIN mf_loan_products cp ON l.product_id = cp.id
             ORDER BY l.created_at DESC
         `);
         res.json(result.rows);
@@ -249,19 +249,144 @@ app.post('/api/sync/excel', upload.single('file'), async (req, res) => {
         // Parse Excel from memory buffer
         const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
         const sheetName = workbook.SheetNames[0];
-        const sheetData = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+        const sheet = workbook.Sheets[sheetName];
+        
+        // Read as 2D array to find headers robustly
+        const rows = xlsx.utils.sheet_to_json(sheet, { header: 1 });
+        
+        // Find header row by looking for 'NIC'
+        let headerRowIndex = -1;
+        for (let i = 0; i < Math.min(rows.length, 10); i++) {
+            const row = rows[i];
+            if (row && row.some(cell => String(cell || '').replace(/\u00A0/g, ' ').trim().toUpperCase() === 'NIC')) {
+                headerRowIndex = i;
+                break;
+            }
+        }
 
-        // Basic Analysis: Just return some stats to prove it works for now
-        // In the next step, we will map this to the specific Arrears logic
-        const recordCount = sheetData.length;
-        console.log(`[SYNC] Parsed Excel File. Records found: ${recordCount}`);
+        if (headerRowIndex === -1) {
+            console.error('[SYNC] Could not find NIC header in first 10 rows');
+            return res.status(400).json({ error: 'Invalid report format: Could not find "NIC" column header.' });
+        }
+
+        const headers = rows[headerRowIndex].map(h => String(h || '').replace(/\u00A0/g, ' ').trim());
+        console.log('[SYNC] Detected Headers:', headers);
+
+        const getCol = (name) => headers.findIndex(h => h.toLowerCase() === name.toLowerCase());
+
+        const idxNIC = getCol('NIC');
+        const idxName = getCol('Customer Name') !== -1 ? getCol('Customer Name') : getCol('Initials');
+        const idxCenter = getCol('Center');
+        const idxLoanAmount = getCol('Loan Amount');
+        const idxBalance = getCol('Balance');
+        const idxTotal = getCol('Total');
+        const idxInstalment = getCol('Instalment');
+        const idxArrears = getCol('Total Arrears');
+        const idxLoanId = getCol('Loan ID');
+        const idxLoanType = getCol('Loan Type');
+        const idxPhone = getCol('Contact Number');
+        const idxAddress = getCol('Post Address') !== -1 ? getCol('Post Address') : getCol('Team');
+        const idxLoanShare = getCol('Loan Share');
+
+        const dataRows = rows.slice(headerRowIndex + 1);
+        console.log(`[SYNC] Processing ${dataRows.length} data rows...`);
+
+        // Save file to disk for inspection/archival
+        const fs = require('fs');
+        const path = require('path');
+        const uploadDir = path.join(__dirname, 'uploads', 'reports');
+        if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+        
+        const fileName = `report_${Date.now()}_${req.file.originalname}`;
+        fs.writeFileSync(path.join(uploadDir, fileName), req.file.buffer);
+
+        const client = await pool.connect();
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const row of dataRows) {
+            try {
+                const nic = String(row[idxNIC] || '').trim();
+                if (!nic || nic === 'undefined' || nic === 'NIC') continue;
+
+                const fullName = row[idxName] || 'N/A';
+                const centerName = row[idxCenter] || 'Default';
+                const loanAmount = parseFloat(row[idxLoanAmount]) || 0;
+                const balance = parseFloat(row[idxBalance]) || 0;
+                const originalTotal = parseFloat(row[idxTotal]) || 0;
+                const installment = parseFloat(row[idxInstalment]) || 0;
+                const arrears = parseFloat(row[idxArrears]) || 0;
+                const sourceLoanId = String(row[idxLoanId] || '');
+                const loanType = row[idxLoanType] || 'N/A';
+                const phone = String(row[idxPhone] || '').trim();
+                const address = String(row[idxAddress] || '').trim();
+                const savingsBalance = parseFloat(row[idxLoanShare]) || 0;
+
+                // 1. Find or Create Center
+                let centerRes = await client.query('SELECT id FROM mf_centers WHERE name = $1', [centerName]);
+                let centerId;
+                if (centerRes.rows.length === 0) {
+                    const newCenter = await client.query('INSERT INTO mf_centers (name) VALUES ($1) RETURNING id', [centerName]);
+                    centerId = newCenter.rows[0].id;
+                } else {
+                    centerId = centerRes.rows[0].id;
+                }
+
+                // 2. Upsert Customer
+                const customerRes = await client.query(
+                    `INSERT INTO mf_customers (nic, full_name, phone, address_permanent, center_id)
+                     VALUES ($1, $2, $3, $4, $5)
+                     ON CONFLICT (nic) DO UPDATE 
+                     SET full_name = EXCLUDED.full_name, phone = EXCLUDED.phone, 
+                         address_permanent = EXCLUDED.address_permanent, center_id = EXCLUDED.center_id
+                     RETURNING id`,
+                    [nic, fullName, phone, address, centerId]
+                );
+                const customerId = customerRes.rows[0].id;
+
+                // 3. Update Savings
+                await client.query(
+                    `INSERT INTO mf_savings (customer_id, balance)
+                     VALUES ($1, $2)
+                     ON CONFLICT (customer_id) DO UPDATE SET balance = EXCLUDED.balance`,
+                    [customerId, savingsBalance]
+                );
+
+                // 4. Update/Create Loan Snapshot
+                if (balance > 0 || loanAmount > 0) {
+                    const interestAmount = originalTotal - loanAmount;
+                    await client.query(
+                        `INSERT INTO mf_loans (customer_id, source_loan_id, principal_amount, interest_amount, total_payable, installment_amount, loan_type, arrears_amount, status)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Active')
+                         ON CONFLICT (customer_id) WHERE status = 'Active' DO UPDATE 
+                         SET source_loan_id = EXCLUDED.source_loan_id,
+                             principal_amount = EXCLUDED.principal_amount,
+                             interest_amount = EXCLUDED.interest_amount,
+                             total_payable = EXCLUDED.total_payable,
+                             installment_amount = EXCLUDED.installment_amount,
+                             loan_type = EXCLUDED.loan_type,
+                             arrears_amount = EXCLUDED.arrears_amount`,
+                        [customerId, sourceLoanId, loanAmount, interestAmount, balance, installment, loanType, arrears]
+                    );
+                }
+
+                successCount++;
+            } catch (rowErr) {
+                console.error(`[SYNC ROW ERROR] NIC: ${row[idxNIC]}`, rowErr.message);
+                errorCount++;
+            }
+        }
 
         res.json({
-            message: 'File processed successfully',
-            recordsProcessed: recordCount,
-            sampleData: sheetData.slice(0, 3) // Return 3 records as a preview
+            message: 'Data synchronization completed',
+            totalRecords: dataRows.length,
+            successCount,
+            errorCount,
+            fileName: fileName,
+            sampleData: []
         });
 
+        client.release();
     } catch (err) {
         console.error('[SYNC ERROR]', err);
         res.status(500).json({ error: 'Failed to process Excel file', details: err.message });

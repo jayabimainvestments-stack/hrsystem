@@ -490,7 +490,7 @@ const getConsolidatedPayrollReport = async (req, res) => {
             JOIN users u ON p.user_id = u.id
             JOIN employees e ON u.id = e.user_id
             LEFT JOIN employee_bank_details eb ON u.id = eb.user_id
-            WHERE p.month = $1 AND p.status = 'Approved'
+            WHERE p.month = $1 AND p.status IN ('Approved', 'Reviewed')
             ORDER BY e.epf_no::integer ASC, u.name ASC
         `, [month]);
 
@@ -525,6 +525,25 @@ const getConsolidatedPayrollReport = async (req, res) => {
             // Ensure Basic Salary is in the additions but separate for logic
             const basicSalary = parseFloat(p.basic_salary);
             additions['Basic Salary'] = basicSalary;
+
+            // WELFARE FIX: Always read welfare directly from the payroll row since
+            // the component name in payroll_details can vary (Welfare, Staff Welfare, etc.)
+            // Force-set 'Welfare 2%' key so the consolidated sheet can reliably find it.
+            const welfareFromPayroll = parseFloat(p.welfare || 0);
+            if (welfareFromPayroll > 0) {
+                // Only add if not already present from payroll_details under any welfare-named key
+                const alreadyHasWelfare = Object.keys(deductions).some(k => k.toLowerCase().includes('welfare'));
+                if (!alreadyHasWelfare) {
+                    deductions['Welfare 2%'] = welfareFromPayroll;
+                } else {
+                    // Rename whatever key exists to 'Welfare 2%' for consistent lookup
+                    const existingKey = Object.keys(deductions).find(k => k.toLowerCase().includes('welfare'));
+                    if (existingKey && existingKey !== 'Welfare 2%') {
+                        deductions['Welfare 2%'] = deductions[existingKey];
+                        delete deductions[existingKey];
+                    }
+                }
+            }
 
             results.push({
                 idx: p.epf_no || p.string_id,
@@ -568,7 +587,7 @@ const getEPFFormC = async (req, res) => {
             FROM payroll p
             JOIN users u ON p.user_id = u.id
             JOIN employees e ON u.id = e.user_id
-            WHERE p.month = $1 AND p.status = 'Approved'
+            WHERE p.month = $1 AND p.status IN ('Approved', 'Reviewed')
             ORDER BY e.epf_no::integer ASC
         `, [month]);
 
@@ -608,7 +627,7 @@ const getETFFormR4 = async (req, res) => {
             FROM payroll p
             JOIN users u ON p.user_id = u.id
             JOIN employees e ON u.id = e.user_id
-            WHERE p.month = $1 AND p.status = 'Approved'
+            WHERE p.month = $1 AND p.status IN ('Approved', 'Reviewed')
             ORDER BY e.epf_no::integer ASC
         `, [month]);
 

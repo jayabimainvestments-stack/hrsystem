@@ -506,18 +506,8 @@ const createPayroll = async (req, res) => {
             `, flatValues);
         }
 
-        // Post-processing: Decrement installments_remaining in Salary Structure for loan components
-        const structurePromises = [];
-        for (const comp of components) {
-            if (comp.name.toLowerCase().includes('loan') && comp.installments_remaining > 0 && appliedComponentIds.has(comp.component_id)) {
-                structurePromises.push(client.query(`
-                    UPDATE employee_salary_structure 
-                    SET installments_remaining = installments_remaining - 1 
-                    WHERE employee_id = $1 AND component_id = $2
-                `, [employee.id, comp.component_id]));
-            }
-        }
-        if (structurePromises.length > 0) await Promise.all(structurePromises);
+        // Post-processing: Loan deductions are no longer processed during payroll generation.
+        // They are processed during the approvePayroll phase to prevent double deductions if a payroll is regenerated.
 
         // 8. Update Liabilities & Audit Log
         const liabilityPromises = [];
@@ -1086,33 +1076,106 @@ const reviewPayroll = async (req, res) => {
 // @access  Private (Management)
 const approvePayroll = async (req, res) => {
     const { id } = req.params;
+    const client = await db.pool.connect();
     try {
-        const payrollRes = await db.query('SELECT reviewed_by FROM payroll WHERE id = $1', [id]);
-        if (payrollRes.rows.length === 0) return res.status(404).json({ message: 'Payroll record not found.' });
+        await client.query('BEGIN');
+        const payrollRes = await client.query('SELECT reviewed_by, month, user_id FROM payroll WHERE id = $1', [id]);
+        if (payrollRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ message: 'Payroll record not found.' });
+        }
 
         const payroll = payrollRes.rows[0];
         if (String(payroll.reviewed_by) === String(req.user.id)) {
+            await client.query('ROLLBACK');
             return res.status(403).json({ message: 'Segregation of duties: The reviewer cannot be the approver of the same payroll.' });
         }
 
-        const result = await db.query(`
+        const result = await client.query(`
             UPDATE payroll 
             SET status = 'Approved', approved_by = $1, locked = TRUE
             WHERE id = $2 AND status = 'Reviewed' -- Must be reviewed first
             RETURNING *
         `, [req.user.id, id]);
 
-        if (result.rows.length === 0) return res.status(400).json({ message: 'Payroll record not found or not in Reviewed state.' });
+        if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ message: 'Payroll record not found or not in Reviewed state.' });
+        }
+
+        // Loan Deduction Processing
+        // Fetch payroll details to check for loan deductions
+        const detailsRes = await client.query("SELECT * FROM payroll_details WHERE payroll_id = $1 AND component_name ILIKE '%loan%'", [id]);
+        
+        if (detailsRes.rows.length > 0) {
+            // Get employee_id from user_id
+            const empRes = await client.query('SELECT id FROM employees WHERE user_id = $1', [payroll.user_id]);
+            if (empRes.rows.length > 0) {
+                const employeeId = empRes.rows[0].id;
+                
+                for (const detail of detailsRes.rows) {
+                    // Find the structure component
+                    const structRes = await client.query(`
+                        SELECT ess.*, sc.name 
+                        FROM employee_salary_structure ess
+                        JOIN salary_components sc ON ess.component_id = sc.id
+                        WHERE ess.employee_id = $1 AND sc.name = $2
+                    `, [employeeId, detail.component_name]);
+                    
+                    if (structRes.rows.length > 0) {
+                        const struct = structRes.rows[0];
+                        
+                        // Decrement installments_remaining
+                        await client.query(`
+                            UPDATE employee_salary_structure 
+                            SET installments_remaining = GREATEST(0, installments_remaining - 1)
+                            WHERE id = $1
+                        `, [struct.id]);
+                        
+                        // Parse loan_id from lock_reason (e.g. "Approved Loan - Ref: 1")
+                        let loanId = null;
+                        if (struct.lock_reason) {
+                            const match = struct.lock_reason.match(/Ref:\s*(\d+)/i);
+                            if (match) loanId = parseInt(match[1]);
+                        }
+                        
+                        if (loanId) {
+                            // Update tracker
+                            const loanRes = await client.query(`
+                                UPDATE employee_loans 
+                                SET installments_paid = installments_paid + 1,
+                                    status = CASE WHEN installments_paid + 1 >= num_installments THEN 'Completed' ELSE status END,
+                                    updated_at = NOW()
+                                WHERE id = $1
+                                RETURNING *
+                            `, [loanId]);
+                            
+                            // Insert into loan_payments
+                            if (loanRes.rows.length > 0) {
+                                await client.query(`
+                                    INSERT INTO loan_payments (loan_id, payment_date, amount, type, month, note, created_by, status)
+                                    VALUES ($1, CURRENT_DATE, $2, 'payroll', $3, $4, $5, 'Approved')
+                                `, [loanId, detail.amount, payroll.month, `Payroll deduction for ${payroll.month}`, req.user.id]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Log
-        await db.query(`
+        await client.query(`
             INSERT INTO audit_logs (user_id, action, entity, entity_id, new_values)
             VALUES ($1, $2, $3, $4, $5)
         `, [req.user.id, 'APPROVE_PAYROLL', 'Payroll', id, JSON.stringify({ details: 'Approved and Locked payroll' })]);
 
+        await client.query('COMMIT');
         res.status(200).json(result.rows[0]);
     } catch (error) {
+        await client.query('ROLLBACK');
         res.status(500).json({ message: error.message });
+    } finally {
+        client.release();
     }
 };
 

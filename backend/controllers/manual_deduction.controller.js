@@ -39,7 +39,7 @@ const getManualDeductions = async (req, res) => {
                         (COALESCE(calc.absent_days, 0) * (CASE WHEN $2 > 0 THEN $2 ELSE (COALESCE(sal.basic_salary, 0) / 30.0) * $4 END)) + 
                         (COALESCE(calc.late_hours, 0) * (CASE WHEN $3 > 0 THEN $3 ELSE (COALESCE(sal.basic_salary, 0) / 240.0) END))
                 ) as total_amount,
-                COALESCE(ad.status, 'Pending') as status,
+                ad.status,
                 ad.created_by,
                 ad.approved_by_1,
                 -- Return calculated values for reference
@@ -158,7 +158,7 @@ const saveManualDeduction = async (req, res) => {
 
         // 2. Check if entry exists
         const checkRes = await db.query(
-            'SELECT id, status FROM attendance_deductions WHERE employee_id = $1 AND month = $2',
+            'SELECT id, status FROM attendance_deductions WHERE employee_id = $1::integer AND month = $2::text',
             [employee_id, month]
         );
 
@@ -178,11 +178,12 @@ const saveManualDeduction = async (req, res) => {
                 SET deduct_days = $1, deduct_day_rate = $2, 
                     deduct_hours = $3, deduct_hour_rate = $4, 
                     total_amount = $5, reason = $6, updated_at = NOW(),
-                    status = $8, approved_by_1 = CASE WHEN $8 = 'Processed' THEN $9 ELSE NULL END, 
+                    status = $8::text, 
+                    approved_by_1 = CASE WHEN $8::text = 'Processed' THEN $9::integer ELSE NULL END, 
                     approved_by_2 = NULL, 
-                    approved_at_1 = CASE WHEN $8 = 'Processed' THEN NOW() ELSE NULL END, 
+                    approved_at_1 = CASE WHEN $8::text = 'Processed' THEN NOW() ELSE NULL END, 
                     approved_at_2 = NULL
-                WHERE id = $7
+                WHERE id = $7::integer
                 RETURNING *
             `, [deduct_days, dayRate, deduct_hours, hourRate, totalAmount, reason, existing.id, newStatus, req.user.id]);
 
@@ -194,7 +195,9 @@ const saveManualDeduction = async (req, res) => {
             const insertRes = await db.query(`
                 INSERT INTO attendance_deductions 
                 (employee_id, month, deduct_days, deduct_day_rate, deduct_hours, deduct_hour_rate, total_amount, reason, status, created_by, approved_by_1, approved_at_1)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CASE WHEN $9 = 'Processed' THEN $10 ELSE NULL END, CASE WHEN $9 = 'Processed' THEN NOW() ELSE NULL END)
+                VALUES ($1::integer, $2::text, $3, $4, $5, $6, $7, $8, $9::text, $10::integer, 
+                        CASE WHEN $9::text = 'Processed' THEN $10::integer ELSE NULL END, 
+                        CASE WHEN $9::text = 'Processed' THEN NOW() ELSE NULL END)
                 RETURNING *
             `, [employee_id, month, deduct_days, dayRate, deduct_hours, hourRate, totalAmount, reason, newStatus, req.user.id]);
 
@@ -264,10 +267,10 @@ async function processToSalaryStructure(employeeId, amount, month) {
 
     // 2. Upsert into monthly_salary_overrides
     await db.query(`
-        INSERT INTO monthly_salary_overrides (employee_id, month, component_id, amount, reason)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO monthly_salary_overrides (employee_id, month, component_id, amount, status, reason)
+        VALUES ($1, $2, $3, $4, 'Approved', $5)
         ON CONFLICT (employee_id, month, component_id)
-        DO UPDATE SET amount = EXCLUDED.amount, reason = EXCLUDED.reason
+        DO UPDATE SET amount = EXCLUDED.amount, status = 'Approved', reason = EXCLUDED.reason
     `, [employeeId, month, deductionComponentId, amount, 'Attendance/Manual Deduction']);
 }
 
