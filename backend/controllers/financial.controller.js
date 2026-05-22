@@ -156,7 +156,7 @@ const getMonthStatus = async (req, res) => {
 
     try {
         const result = await db.query(
-            'SELECT status, approved_by, requested_by, created_at, updated_at FROM financial_requests WHERE month = $1 AND type = $2 ORDER BY created_at DESC LIMIT 1',
+            "SELECT status, approved_by, requested_by, created_at, updated_at FROM financial_requests WHERE month = $1 AND type = $2 AND status != 'Rejected' ORDER BY created_at DESC LIMIT 1",
             [month, type]
         );
 
@@ -164,7 +164,7 @@ const getMonthStatus = async (req, res) => {
             const request = result.rows[0];
             res.status(200).json({
                 exists: true,
-                transferred: request.status === 'Approved',
+                transferred: request.status === 'Approved' || request.status === 'Transferred',
                 status: request.status,
                 ...request
             });
