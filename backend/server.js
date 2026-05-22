@@ -1,3 +1,14 @@
+// Polyfill global.File for Node.js versions < 20 (e.g. Node 18) where it is not defined globally
+if (typeof global.File === 'undefined') {
+    global.File = class File extends (global.Blob || class {}) {
+        constructor(parts, filename, options = {}) {
+            super(parts, options);
+            this.name = filename;
+            this.lastModified = options.lastModified || Date.now();
+        }
+    };
+}
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
