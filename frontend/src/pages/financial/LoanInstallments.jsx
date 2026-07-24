@@ -409,7 +409,7 @@ const LoanInstallments = () => {
                                         {/* Loan Row */}
                                         <div className="px-8 py-6 flex flex-col md:flex-row items-start md:items-center gap-6">
                                             {/* Employee */}
-                                            <div className="flex items-center gap-4 min-w-[180px]">
+                                            <div className="flex items-center gap-4 w-full md:w-[250px] shrink-0">
                                                 <div className="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-black text-sm">
                                                     {loan.employee_name?.charAt(0)}
                                                 </div>

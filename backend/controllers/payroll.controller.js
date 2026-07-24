@@ -1126,11 +1126,27 @@ const approvePayroll = async (req, res) => {
                         const struct = structRes.rows[0];
                         
                         // Decrement installments_remaining
-                        await client.query(`
-                            UPDATE employee_salary_structure 
-                            SET installments_remaining = GREATEST(0, installments_remaining - 1)
-                            WHERE id = $1
-                        `, [struct.id]);
+                        if (struct.installments_remaining !== null) {
+                            const newInstallments = Math.max(0, struct.installments_remaining - 1);
+                            if (newInstallments === 0) {
+                                await client.query(`
+                                    DELETE FROM employee_salary_structure 
+                                    WHERE id = $1
+                                `, [struct.id]);
+                            } else {
+                                await client.query(`
+                                    UPDATE employee_salary_structure 
+                                    SET installments_remaining = $1
+                                    WHERE id = $2
+                                `, [newInstallments, struct.id]);
+                            }
+                        } else {
+                            await client.query(`
+                                UPDATE employee_salary_structure 
+                                SET installments_remaining = GREATEST(0, installments_remaining - 1)
+                                WHERE id = $1
+                            `, [struct.id]);
+                        }
                         
                         // Parse loan_id from lock_reason (e.g. "Approved Loan - Ref: 1")
                         let loanId = null;

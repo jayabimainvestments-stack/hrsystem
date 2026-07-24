@@ -64,7 +64,7 @@ const getManualDeductions = async (req, res) => {
                 LEFT JOIN (
                     SELECT employee_id, 
                            (COUNT(*) FILTER (WHERE status = 'Absent')) + (COUNT(*) FILTER (WHERE status = 'Incomplete' AND date < CURRENT_DATE) * 0.5) as absent_days,
-                           ROUND(SUM(COALESCE(late_minutes, 0)) / 60.0 + SUM(CASE WHEN date < CURRENT_DATE THEN COALESCE(short_leave_hours, 0) ELSE 0 END), 2) as late_hours
+                           ROUND(SUM(CASE WHEN status = 'Incomplete' OR status = 'Absent' THEN 0 ELSE COALESCE(late_minutes, 0) END) / 60.0 + SUM(CASE WHEN date < CURRENT_DATE THEN COALESCE(short_leave_hours, 0) ELSE 0 END), 2) as late_hours
                     FROM attendance
                     WHERE date >= $5::date AND date <= $6::date
                     GROUP BY employee_id
@@ -89,17 +89,17 @@ const getManualDeductions = async (req, res) => {
                     -- Incomplete (Half days)
                     SELECT date::text as date, 'Incomplete' as reason, '0.5' as value, 'day' as unit
                     FROM attendance
-                    WHERE employee_id = e.id AND date >= $5::date AND date <= $6::date AND status = 'Incomplete'
+                    WHERE employee_id = e.id AND date >= $5::date AND date <= $6::date AND status = 'Incomplete' AND date < CURRENT_DATE
                     UNION ALL
                     -- Late Minutes
                     SELECT date::text as date, 'Late' as reason, CAST(late_minutes AS text) as value, 'mins' as unit
                     FROM attendance
-                    WHERE employee_id = e.id AND date >= $5::date AND date <= $6::date AND late_minutes > 0
+                    WHERE employee_id = e.id AND date >= $5::date AND date <= $6::date AND late_minutes > 0 AND status != 'Incomplete' AND status != 'Absent'
                     UNION ALL
                     -- Short Leave Hours
                     SELECT date::text as date, 'Short Leave' as reason, CAST(short_leave_hours AS text) as value, 'hours' as unit
                     FROM attendance
-                    WHERE employee_id = e.id AND date >= $5::date AND date <= $6::date AND short_leave_hours > 0
+                    WHERE employee_id = e.id AND date >= $5::date AND date <= $6::date AND short_leave_hours > 0 AND date < CURRENT_DATE
                     UNION ALL
                     -- Unpaid Leaves
                     SELECT gs.date::date::text as date, 'Unpaid ' || l.leave_type as reason, '1.0' as value, 'day' as unit

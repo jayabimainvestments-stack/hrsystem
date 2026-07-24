@@ -477,6 +477,30 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
                             updated_at = NOW()
                         WHERE id = $3
                     `, [newPaid, isComplete, loan.id]);
+
+                    // Sync changes to employee_salary_structure
+                    const structRes = await client.query(`
+                        SELECT id 
+                        FROM employee_salary_structure 
+                        WHERE employee_id = $1 AND lock_reason LIKE $2
+                    `, [loan.employee_id, `%Ref: ${loan.id}%`]);
+
+                    if (structRes.rows.length > 0) {
+                        const struct = structRes.rows[0];
+                        const remaining = loan.num_installments - newPaid;
+                        if (remaining <= 0) {
+                            await client.query(`
+                                DELETE FROM employee_salary_structure 
+                                WHERE id = $1
+                            `, [struct.id]);
+                        } else {
+                            await client.query(`
+                                UPDATE employee_salary_structure 
+                                SET installments_remaining = $1 
+                                WHERE id = $2
+                            `, [remaining, struct.id]);
+                        }
+                    }
                 }
             }
         }
