@@ -15,6 +15,7 @@ const EmployeeList = () => {
     const [search, setSearch] = useState('');
     const [deptFilter, setDeptFilter] = useState('');
     const [desigFilter, setDesigFilter] = useState('');
+    const [contractFilter, setContractFilter] = useState('');
     const [showAddModal, setShowAddModal] = useState(false);
 
     const { user } = useAuth();

@@ -68,7 +68,10 @@ const EditEmployeeModal = ({ employee, onClose, onEmployeeUpdated }) => {
                 emergency_name: employee.emergency_contact?.name || employee.emergency_contact_name || '',
                 emergency_relation: employee.emergency_contact?.relation || '',
                 emergency_phone: employee.emergency_contact?.phone || employee.emergency_contact_phone || '',
-                biometric_id: employee.biometric_id || employee.epf_no || ''
+                biometric_id: employee.biometric_id || employee.epf_no || '',
+                contract_type: employee.contract_type || 'Permanent',
+                probation_end_date: employee.probation_end_date ? employee.probation_end_date.split('T')[0] : '',
+                confirmation_date: employee.confirmation_date ? employee.confirmation_date.split('T')[0] : ''
             });
         }
     }, [employee]);
@@ -264,6 +267,43 @@ const EditEmployeeModal = ({ employee, onClose, onEmployeeUpdated }) => {
                                             .map(d => <option key={d.id} value={d.title}>{d.title}</option>)}
                                     </select>
                                 </div>
+
+                                <div>
+                                    <label className={labelClass}>Employment / Contract Type</label>
+                                    <select name="contract_type" value={formData.contract_type} onChange={handleChange} className={inputClass} required>
+                                        <option value="Probation">Probation (පරිවාස)</option>
+                                        <option value="Permanent">Permanent (ස්ථිර)</option>
+                                        <option value="Contract">Contract (ගිවිසුම්ගත)</option>
+                                        <option value="Trainee">Trainee / Intern (පුහුණු)</option>
+                                    </select>
+                                </div>
+
+                                {formData.contract_type === 'Probation' && (
+                                    <div>
+                                        <label className={labelClass}>Probation End Date (පරිවාස අවසන් දිනය)</label>
+                                        <input 
+                                            name="probation_end_date" 
+                                            type="date" 
+                                            value={formData.probation_end_date} 
+                                            onChange={handleChange} 
+                                            className={inputClass} 
+                                            required 
+                                        />
+                                    </div>
+                                )}
+
+                                {formData.contract_type === 'Permanent' && (
+                                    <div>
+                                        <label className={labelClass}>Confirmation Date (ස්ථිර කළ දිනය)</label>
+                                        <input 
+                                            name="confirmation_date" 
+                                            type="date" 
+                                            value={formData.confirmation_date} 
+                                            onChange={handleChange} 
+                                            className={inputClass} 
+                                        />
+                                    </div>
+                                )}
                             </div>
                         )}
 

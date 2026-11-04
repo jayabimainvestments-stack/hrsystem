@@ -41,6 +41,7 @@ const getEmployeeById = async (req, res) => {
                 e.id as employee_id, e.designation, e.department, e.hire_date, e.employment_status,
                 e.phone, e.address, e.nic_passport, e.dob, e.gender, e.marital_status, e.blood_group,
                 e.emergency_contact, e.is_epf_eligible, e.is_etf_eligible, e.biometric_id,
+                e.contract_type, e.probation_end_date, e.confirmation_date,
                 b.bank_name, b.branch_code, b.account_number, b.account_holder_name
             FROM users u
             LEFT JOIN employees e ON u.id = e.user_id 
@@ -191,7 +192,7 @@ const updateEmployee = async (req, res) => {
         const employeeSensitiveFields = [
             'nic_passport', 'designation', 'department', 'employment_status',
             'biometric_id', 'epf_no', 'phone', 'address', 'dob', 'gender',
-            'marital_status', 'hire_date', 'is_epf_eligible', 'is_etf_eligible'
+            'marital_status', 'hire_date', 'is_epf_eligible', 'is_etf_eligible', 'contract_type', 'probation_end_date', 'confirmation_date'
         ];
 
         const pendingFields = new Set();
@@ -427,6 +428,198 @@ const getSalaryStructure = async (req, res) => {
              FROM employee_salary_structure s
              JOIN salary_components c ON s.component_id = c.id
              WHERE s.employee_id = $1`,
+            [req.params.id]
+        );
+        res.status(200).json(result.rows);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+
+// @desc    Confirm employee probation (transition to Permanent)
+// @route   POST /api/employees/:id/confirm-probation
+// @access  Private (Admin/HR Manager)
+const confirmProbation = async (req, res) => {
+    const { confirmation_date, remarks } = req.body;
+    const employeeId = req.params.id;
+
+    try {
+        await db.query('BEGIN');
+
+        const currentRes = await db.query('SELECT * FROM employees WHERE id = $1', [employeeId]);
+        if (currentRes.rows.length === 0) {
+            await db.query('ROLLBACK');
+            return res.status(404).json({ message: 'Employee not found' });
+        }
+        const emp = currentRes.rows[0];
+        const confirmDate = confirmation_date || new Date().toISOString().split('T')[0];
+
+        // 1. Update employee contract_type & confirmation_date
+        const updateRes = await db.query(
+            `UPDATE employees 
+             SET contract_type = 'Permanent', 
+                 confirmation_date = $1,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2 
+             RETURNING *`,
+            [confirmDate, employeeId]
+        );
+
+        // 2. Record in employment_history
+        try {
+            await db.query(
+                `INSERT INTO employment_history (employee_id, event_type, previous_state, new_state, event_date, remarks, created_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [
+                    employeeId,
+                    'CONFIRMATION',
+                    JSON.stringify({ contract_type: emp.contract_type, probation_end_date: emp.probation_end_date }),
+                    JSON.stringify({ contract_type: 'Permanent', confirmation_date: confirmDate }),
+                    confirmDate,
+                    remarks || 'Probation successfully completed. Confirmed as Permanent employee.',
+                    req.user.id
+                ]
+            );
+        } catch (e) {
+            console.error('Non-critical: employment_history insert failed', e.message);
+        }
+
+        // 3. Record in employee_history for career timeline
+        try {
+            await db.query(
+                `INSERT INTO employee_history 
+                 (employee_id, action_type, previous_department, new_department, previous_designation, new_designation, previous_salary, new_salary, reason, changed_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+                [
+                    employeeId,
+                    'Probation Confirmation',
+                    emp.department, emp.department,
+                    emp.designation, emp.designation,
+                    0, 0,
+                    remarks || 'Confirmed as permanent employee',
+                    req.user.id
+                ]
+            );
+        } catch (e) {
+            console.error('Non-critical: employee_history insert failed', e.message);
+        }
+
+        await db.query('COMMIT');
+
+        res.status(200).json({
+            message: 'Employee successfully confirmed as Permanent',
+            employee: updateRes.rows[0]
+        });
+    } catch (error) {
+        await db.query('ROLLBACK');
+        console.error('Error confirming probation:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Extend employee probation period
+// @route   POST /api/employees/:id/extend-probation
+// @access  Private (Admin/HR Manager)
+const extendProbation = async (req, res) => {
+    const { new_probation_end_date, extension_months, remarks } = req.body;
+    const employeeId = req.params.id;
+
+    try {
+        await db.query('BEGIN');
+
+        const currentRes = await db.query('SELECT * FROM employees WHERE id = $1', [employeeId]);
+        if (currentRes.rows.length === 0) {
+            await db.query('ROLLBACK');
+            return res.status(404).json({ message: 'Employee not found' });
+        }
+        const emp = currentRes.rows[0];
+
+        let targetDate = new_probation_end_date;
+        if (!targetDate && extension_months) {
+            const baseDate = emp.probation_end_date ? new Date(emp.probation_end_date) : new Date();
+            baseDate.setMonth(baseDate.getMonth() + parseInt(extension_months));
+            targetDate = baseDate.toISOString().split('T')[0];
+        }
+
+        if (!targetDate) {
+            await db.query('ROLLBACK');
+            return res.status(400).json({ message: 'New probation end date or extension months required' });
+        }
+
+        // 1. Update employee
+        const updateRes = await db.query(
+            `UPDATE employees 
+             SET contract_type = 'Probation', 
+                 probation_end_date = $1,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2 
+             RETURNING *`,
+            [targetDate, employeeId]
+        );
+
+        // 2. Record in employment_history
+        try {
+            await db.query(
+                `INSERT INTO employment_history (employee_id, event_type, previous_state, new_state, event_date, remarks, created_by)
+                 VALUES ($1, $2, $3, $4, CURRENT_DATE, $5, $6)`,
+                [
+                    employeeId,
+                    'PROBATION_EXTENSION',
+                    JSON.stringify({ probation_end_date: emp.probation_end_date }),
+                    JSON.stringify({ probation_end_date: targetDate, extension_months }),
+                    remarks || `Probation extended until ${targetDate}`,
+                    req.user.id
+                ]
+            );
+        } catch (e) {
+            console.error('Non-critical: employment_history insert failed', e.message);
+        }
+
+        // 3. Record in employee_history
+        try {
+            await db.query(
+                `INSERT INTO employee_history 
+                 (employee_id, action_type, previous_department, new_department, previous_designation, new_designation, previous_salary, new_salary, reason, changed_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+                [
+                    employeeId,
+                    'Probation Extension',
+                    emp.department, emp.department,
+                    emp.designation, emp.designation,
+                    0, 0,
+                    remarks || `Probation extended to ${targetDate}`,
+                    req.user.id
+                ]
+            );
+        } catch (e) {
+            console.error('Non-critical: employee_history insert failed', e.message);
+        }
+
+        await db.query('COMMIT');
+
+        res.status(200).json({
+            message: `Probation successfully extended until ${targetDate}`,
+            employee: updateRes.rows[0]
+        });
+    } catch (error) {
+        await db.query('ROLLBACK');
+        console.error('Error extending probation:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Get Employee Career & Employment History
+// @route   GET /api/employees/:id/history
+// @access  Private
+const getEmployeeHistory = async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT eh.*, u.name as changed_by_name
+             FROM employee_history eh
+             LEFT JOIN users u ON eh.changed_by = u.id
+             WHERE eh.employee_id = $1
+             ORDER BY eh.created_at DESC`,
             [req.params.id]
         );
         res.status(200).json(result.rows);

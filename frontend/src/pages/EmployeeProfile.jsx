@@ -13,7 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import {
     User, FileText, Settings, LogOut, CreditCard, Star,
     ShieldAlert, Edit3, ArrowUpCircle, Phone, Mail, MapPin,
-    Calendar, Hash, Briefcase, Building2, Lock, KeyRound, CheckCircle2, X
+    Calendar, Hash, Briefcase, Building2, Lock, KeyRound, CheckCircle2, X, Clock, AlertTriangle, Award, History
 } from 'lucide-react';
 
 const EmployeeProfile = ({ isMe }) => {
@@ -40,6 +40,22 @@ const EmployeeProfile = ({ isMe }) => {
     const [passwordLoading, setPasswordLoading] = useState(false);
     const [isEditingName, setIsEditingName] = useState(false);
     const [editedName, setEditedName] = useState('');
+
+    // Probation Confirmation & Extension States
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [confirmDate, setConfirmDate] = useState(new Date().toISOString().split('T')[0]);
+    const [confirmRemarks, setConfirmRemarks] = useState('Successfully completed probation period with satisfactory performance.');
+    const [confirmLoading, setConfirmLoading] = useState(false);
+
+    const [showExtendModal, setShowExtendModal] = useState(false);
+    const [extendMonths, setExtendMonths] = useState('3');
+    const [extendDate, setExtendDate] = useState('');
+    const [extendRemarks, setExtendRemarks] = useState('');
+    const [extendLoading, setExtendLoading] = useState(false);
+
+    // Career History Timeline
+    const [careerHistory, setCareerHistory] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
 
     useEffect(() => {
         if (employee) {
@@ -91,6 +107,55 @@ const EmployeeProfile = ({ isMe }) => {
             fetchMeta();
         }
     }, [showPromoteModal, departments.length]);
+
+        // Auto-calculate extension date when modal opens or months change
+    useEffect(() => {
+        if (showExtendModal && employee?.probation_end_date) {
+            if (extendMonths !== 'custom') {
+                const base = new Date(employee.probation_end_date);
+                base.setMonth(base.getMonth() + parseInt(extendMonths));
+                setExtendDate(base.toISOString().split('T')[0]);
+            }
+        }
+    }, [showExtendModal, extendMonths, employee]);
+
+    const handleConfirmProbation = async (e) => {
+        e.preventDefault();
+        setConfirmLoading(true);
+        try {
+            await api.post(`/employees/${id || employee.id}/confirm-probation`, {
+                confirmation_date: confirmDate,
+                remarks: confirmRemarks
+            });
+            alert('Employee successfully confirmed as Permanent!');
+            setShowConfirmModal(false);
+            fetchEmployee();
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to confirm probation');
+        } finally {
+            setConfirmLoading(false);
+        }
+    };
+
+    const handleExtendProbation = async (e) => {
+        e.preventDefault();
+        if (!extendDate) return alert('Please specify a new probation end date');
+        setExtendLoading(true);
+        try {
+            await api.post(`/employees/${id || employee.id}/extend-probation`, {
+                new_probation_end_date: extendDate,
+                extension_months: extendMonths,
+                remarks: extendRemarks
+            });
+            alert('Probation period successfully extended!');
+            setShowExtendModal(false);
+            fetchEmployee();
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to extend probation');
+        } finally {
+            setExtendLoading(false);
+        }
+    };
 
     const handlePromote = async (e) => {
         e.preventDefault();
@@ -341,6 +406,62 @@ const EmployeeProfile = ({ isMe }) => {
 
                         {/* Details Content */}
                         <div className="lg:col-span-2 space-y-8">
+                            {/* Probation Action Banner for Admin & HR */}
+                            {employee.contract_type === 'Probation' && (
+                                <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border-2 border-amber-400/40 rounded-[2.5rem] p-8 shadow-lg shadow-amber-500/5 relative overflow-hidden">
+                                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                                        <div className="flex items-start gap-4">
+                                            <div className="p-3 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-200 shrink-0 mt-1">
+                                                <Clock size={24} />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                                                        Probationary Period Active
+                                                    </span>
+                                                </div>
+                                                <h3 className="text-xl font-black text-slate-900 tracking-tight mt-1">
+                                                    සේවක පරිවාස කාලසීමාව (Probation Review)
+                                                </h3>
+                                                <p className="text-slate-600 text-xs font-medium mt-1 leading-relaxed">
+                                                    අවසන් වන දිනය: <strong className="text-slate-900">{employee.probation_end_date ? new Date(employee.probation_end_date).toLocaleDateString() : 'නියම කර නැත'}</strong>
+                                                    {(() => {
+                                                        if (!employee.probation_end_date) return null;
+                                                        const pDate = new Date(employee.probation_end_date);
+                                                        const now = new Date();
+                                                        now.setHours(0,0,0,0);
+                                                        const diff = Math.ceil((pDate - now) / (1000 * 60 * 60 * 24));
+                                                        if (diff < 0) {
+                                                            return <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 font-black rounded-lg text-[10px]">⚠️ කාලය ඉකුත්වී ඇත (Overdue by {Math.abs(diff)}d)</span>;
+                                                        } else if (diff === 0) {
+                                                            return <span className="ml-2 px-2 py-0.5 bg-amber-200 text-amber-900 font-black rounded-lg text-[10px]">⚠️ අදින් අවසන් වේ</span>;
+                                                        } else {
+                                                            return <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-800 font-black rounded-lg text-[10px]">⏳ තව දින {diff}ක් ඉතිරිව ඇත</span>;
+                                                        }
+                                                    })()}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {(currentUser.role === 'Admin' || currentUser.role === 'HR Manager') && (
+                                            <div className="flex flex-wrap gap-3 w-full md:w-auto">
+                                                <button
+                                                    onClick={() => setShowConfirmModal(true)}
+                                                    className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-wider hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 active:scale-95"
+                                                >
+                                                    <CheckCircle2 size={16} /> Confirm as Permanent
+                                                </button>
+                                                <button
+                                                    onClick={() => setShowExtendModal(true)}
+                                                    className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-wider hover:bg-slate-800 transition-all shadow-md active:scale-95"
+                                                >
+                                                    <Clock size={16} /> Extend Probation
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                             <div className="bg-white rounded-[3rem] p-10 shadow-sm border border-slate-100">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                                     <div>
@@ -575,6 +696,142 @@ const EmployeeProfile = ({ isMe }) => {
                                 </div>
                             </form>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirm Probation Modal */}
+            {showConfirmModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-300">
+                        <div className="p-8 bg-emerald-600 text-white">
+                            <div className="flex items-center gap-3 mb-1">
+                                <CheckCircle2 size={24} />
+                                <h2 className="text-2xl font-black uppercase tracking-tight">Confirm as Permanent</h2>
+                            </div>
+                            <p className="text-emerald-100 font-medium text-sm">සේවකයා ස්ථිර සේවකයෙකු බවට පත් කිරීම</p>
+                        </div>
+                        <form onSubmit={handleConfirmProbation} className="p-10 space-y-6">
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Employee</p>
+                                <p className="text-base font-black text-slate-800">{employee.name}</p>
+                                <p className="text-xs text-slate-500 mt-0.5">{employee.designation} • {employee.department}</p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirmation Effective Date (ස්ථිර කරන දිනය)</label>
+                                <input
+                                    type="date"
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 focus:ring-4 focus:ring-emerald-100 outline-none transition-all font-bold text-slate-800"
+                                    value={confirmDate}
+                                    onChange={e => setConfirmDate(e.target.value)}
+                                    required
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirmation Notes / Remarks</label>
+                                <textarea
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 focus:ring-4 focus:ring-emerald-100 outline-none transition-all font-bold text-slate-800 resize-none"
+                                    rows="3"
+                                    value={confirmRemarks}
+                                    onChange={e => setConfirmRemarks(e.target.value)}
+                                    placeholder="Enter performance evaluation summary or confirmation notes..."
+                                ></textarea>
+                            </div>
+
+                            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 text-xs text-emerald-800 flex items-center gap-3 font-medium">
+                                <ShieldAlert size={20} className="shrink-0 text-emerald-600" />
+                                <span>This will change the contract type to <strong>Permanent</strong> and record a permanent confirmation milestone in the employee career timeline.</span>
+                            </div>
+
+                            <div className="flex gap-4 pt-2">
+                                <button type="button" onClick={() => setShowConfirmModal(false)} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-all">Cancel</button>
+                                <button
+                                    type="submit"
+                                    disabled={confirmLoading}
+                                    className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-emerald-100 hover:bg-emerald-700 transition-all disabled:opacity-50"
+                                >
+                                    {confirmLoading ? 'Confirming...' : 'Confirm Permanent'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Extend Probation Modal */}
+            {showExtendModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-300">
+                        <div className="p-8 bg-amber-600 text-white">
+                            <div className="flex items-center gap-3 mb-1">
+                                <Clock size={24} />
+                                <h2 className="text-2xl font-black uppercase tracking-tight">Extend Probation</h2>
+                            </div>
+                            <p className="text-amber-100 font-medium text-sm">පරිවාස කාලසීමාව තවදුරටත් දීර්ඝ කිරීම</p>
+                        </div>
+                        <form onSubmit={handleExtendProbation} className="p-10 space-y-6">
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
+                                <div>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Current Probation End Date</p>
+                                    <p className="text-base font-black text-slate-800">
+                                        {employee.probation_end_date ? new Date(employee.probation_end_date).toLocaleDateString() : 'None set'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Extension Duration</label>
+                                    <select
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 focus:ring-4 focus:ring-amber-100 outline-none transition-all font-bold text-slate-800"
+                                        value={extendMonths}
+                                        onChange={e => setExtendMonths(e.target.value)}
+                                    >
+                                        <option value="1">+1 Month (මාස 1)</option>
+                                        <option value="2">+2 Months (මාස 2)</option>
+                                        <option value="3">+3 Months (මාස 3)</option>
+                                        <option value="6">+6 Months (මාස 6)</option>
+                                        <option value="custom">Custom Date (වෙනත්)</option>
+                                    </select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">New End Date (නව අවසන් දිනය)</label>
+                                    <input
+                                        type="date"
+                                        className="w-full bg-white border border-amber-300 rounded-2xl px-5 py-4 focus:ring-4 focus:ring-amber-200 outline-none transition-all font-bold text-slate-800"
+                                        value={extendDate}
+                                        onChange={e => setExtendDate(e.target.value)}
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Reason for Extension (දීර්ඝ කිරීමට හේතුව)</label>
+                                <textarea
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 focus:ring-4 focus:ring-amber-100 outline-none transition-all font-bold text-slate-800 resize-none"
+                                    rows="3"
+                                    value={extendRemarks}
+                                    onChange={e => setExtendRemarks(e.target.value)}
+                                    placeholder="Explain the performance areas requiring improvement or reason for extension..."
+                                    required
+                                ></textarea>
+                            </div>
+
+                            <div className="flex gap-4 pt-2">
+                                <button type="button" onClick={() => setShowExtendModal(false)} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-all">Cancel</button>
+                                <button
+                                    type="submit"
+                                    disabled={extendLoading}
+                                    className="flex-1 py-4 bg-amber-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-amber-100 hover:bg-amber-700 transition-all disabled:opacity-50"
+                                >
+                                    {extendLoading ? 'Extending...' : 'Extend Probation'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

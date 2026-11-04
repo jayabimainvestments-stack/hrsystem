@@ -1,12 +1,20 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { X, User, Briefcase, Building2, Phone, Mail, MapPin, CreditCard, ShieldCheck, Camera, Loader2 } from 'lucide-react';
+import { X, User, Briefcase, Building2, Phone, Mail, MapPin, CreditCard, ShieldCheck, Camera, Loader2, Clock, AlertCircle } from 'lucide-react';
 
 const AddEmployee = ({ onClose, onEmployeeAdded }) => {
+    const today = new Date().toISOString().split('T')[0];
+    const defaultProbation = new Date();
+    defaultProbation.setMonth(defaultProbation.getMonth() + 3);
+
     const [formData, setFormData] = useState({
         name: '', email: '', password: '', role: 'Employee',
-        nic_passport: '', designation: '', department: '', hire_date: new Date().toISOString().split('T')[0],
+        nic_passport: '', designation: '', department: '', hire_date: today,
+        contract_type: 'Probation',
+        probation_duration: '3',
+        probation_end_date: defaultProbation.toISOString().split('T')[0],
+        confirmation_date: '',
         phone: '', address: '',
         is_epf_eligible: true,
         is_etf_eligible: true,
@@ -22,7 +30,6 @@ const AddEmployee = ({ onClose, onEmployeeAdded }) => {
     const [activeTab, setActiveTab] = useState('basic');
     const [departments, setDepartments] = useState([]);
     const [designations, setDesignations] = useState([]);
-    const token = sessionStorage.getItem('token');
 
     useEffect(() => {
         const fetchMeta = async () => {
@@ -39,6 +46,20 @@ const AddEmployee = ({ onClose, onEmployeeAdded }) => {
         };
         fetchMeta();
     }, []);
+
+    // Auto-compute probation end date based on hire date and selected duration
+    useEffect(() => {
+        if (formData.contract_type === 'Probation' && formData.hire_date) {
+            if (formData.probation_duration !== 'custom') {
+                const hire = new Date(formData.hire_date);
+                if (!isNaN(hire.getTime())) {
+                    hire.setMonth(hire.getMonth() + parseInt(formData.probation_duration || '3'));
+                    const calculated = hire.toISOString().split('T')[0];
+                    setFormData(prev => ({ ...prev, probation_end_date: calculated }));
+                }
+            }
+        }
+    }, [formData.hire_date, formData.probation_duration, formData.contract_type]);
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -66,6 +87,7 @@ const AddEmployee = ({ onClose, onEmployeeAdded }) => {
 
         const payload = {
             ...formData,
+            probation_end_date: formData.contract_type === 'Probation' ? formData.probation_end_date : null,
             bank_details: {
                 bank_name: formData.bank_name,
                 branch_code: formData.branch_code,
@@ -209,6 +231,50 @@ const AddEmployee = ({ onClose, onEmployeeAdded }) => {
                                             .map(d => <option key={d.id} value={d.title}>{d.title}</option>)}
                                     </select>
                                 </div>
+
+                                {/* Contract / Employment Type */}
+                                <div>
+                                    <label className={labelClass}>Employment / Contract Type</label>
+                                    <select name="contract_type" value={formData.contract_type} onChange={handleChange} className={inputClass} required>
+                                        <option value="Probation">Probation (පරිවාස)</option>
+                                        <option value="Permanent">Permanent (ස්ථිර)</option>
+                                        <option value="Contract">Contract (ගිවිසුම්ගත)</option>
+                                        <option value="Trainee">Trainee / Intern (පුහුණු)</option>
+                                    </select>
+                                </div>
+
+                                {formData.contract_type === 'Probation' && (
+                                    <>
+                                        <div>
+                                            <label className={labelClass}>Probation Period</label>
+                                            <select name="probation_duration" value={formData.probation_duration} onChange={handleChange} className={inputClass}>
+                                                <option value="3">3 Months (මාස 3 - සම්මත)</option>
+                                                <option value="6">6 Months (මාස 6)</option>
+                                                <option value="12">1 Year (වසර 1)</option>
+                                                <option value="custom">Custom Date (වෙනත්)</option>
+                                            </select>
+                                        </div>
+                                        <div className="col-span-2 bg-amber-50/80 border border-amber-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-amber-500 text-white rounded-xl">
+                                                    <Clock size={18} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-black text-amber-900 uppercase tracking-wider">Probation End Date (පරිවාස අවසන් දිනය)</p>
+                                                    <p className="text-xs text-amber-700 font-medium">Auto-calculated from hire date. Can be customized if needed.</p>
+                                                </div>
+                                            </div>
+                                            <input 
+                                                type="date" 
+                                                name="probation_end_date" 
+                                                value={formData.probation_end_date} 
+                                                onChange={handleChange} 
+                                                className="bg-white border border-amber-300 rounded-xl px-4 py-2 font-bold text-slate-800 text-sm shadow-sm outline-none focus:ring-2 focus:ring-amber-400"
+                                                required={formData.contract_type === 'Probation'}
+                                            />
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         )}
 
@@ -252,14 +318,28 @@ const AddEmployee = ({ onClose, onEmployeeAdded }) => {
                                     <label className={labelClass}>Permanent Address</label>
                                     <textarea name="address" value={formData.address} onChange={handleChange} className={`${inputClass} h-24 pt-4 resize-none`} placeholder="Full residential address..."></textarea>
                                 </div>
+
+                                {/* Sri Lankan Labour Law Advisory */}
+                                <div className="col-span-2 p-4 bg-blue-50/80 rounded-2xl border border-blue-100 flex items-start gap-3">
+                                    <div className="p-2 bg-blue-600 text-white rounded-xl mt-0.5 shrink-0">
+                                        <ShieldCheck size={18} />
+                                    </div>
+                                    <div className="text-xs">
+                                        <p className="font-black text-blue-900 uppercase tracking-wider text-[11px]">ශ්‍රී ලංකා කම්කරු නීති අනුකූලතාව (Sri Lankan Labour Law Compliance)</p>
+                                        <p className="text-slate-600 mt-1 leading-relaxed">
+                                            සේවකයෙකු පරිවාස කාලයක (Probation) හෝ පුහුණු කාලයක (Trainee) සිටියද, 1958 අංක 15 දරන EPF පනත සහ 1980 අංක 46 දරන ETF පනතට අනුව <strong>පළමු වැඩකරන දිනයේ සිටම EPF (8% + 12%) සහ ETF (3%) දායකත්වය අනිවාර්ය වේ.</strong> කිසිදු හේතුවක් මත පරිවාස කාලය තුළ EPF/ETF නොගෙවා සිටීමට නීතියෙන් අවසර නැත.
+                                        </p>
+                                    </div>
+                                </div>
+
                                 <div className="col-span-2 flex gap-6 p-6 bg-slate-50 rounded-3xl border border-slate-100 justify-center">
                                     <label className="flex items-center gap-3 cursor-pointer group">
                                         <input type="checkbox" name="is_epf_eligible" checked={formData.is_epf_eligible} onChange={handleChange} className="w-5 h-5 rounded-lg border-slate-300 text-primary-600 focus:ring-primary-100 transition-all" />
-                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest group-hover:text-primary-600">EPF Eligible</span>
+                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest group-hover:text-primary-600">EPF Eligible (අනිවාර්යයි)</span>
                                     </label>
                                     <label className="flex items-center gap-3 cursor-pointer group">
                                         <input type="checkbox" name="is_etf_eligible" checked={formData.is_etf_eligible} onChange={handleChange} className="w-5 h-5 rounded-lg border-slate-300 text-primary-600 focus:ring-primary-100 transition-all" />
-                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest group-hover:text-primary-600">ETF Eligible</span>
+                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest group-hover:text-primary-600">ETF Eligible (අනිවාර්යයි)</span>
                                     </label>
                                 </div>
                             </div>
