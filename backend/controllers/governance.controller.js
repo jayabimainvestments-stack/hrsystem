@@ -493,6 +493,10 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
                         "UPDATE employees SET employment_status = 'Resigned' WHERE id = $1",
                         [resRow.rows[0].employee_id]
                     );
+                    await client.query(
+                        "UPDATE users u SET is_active = false FROM employees e WHERE u.id = e.user_id AND e.id = $1",
+                        [resRow.rows[0].employee_id]
+                    );
                 }
             }
         }

@@ -56,15 +56,27 @@ const loginUser = async (req, res) => {
     console.log(`[AUTH] Login attempt for: ${email}`);
 
     try {
-        // Case-insensitive email search
-        const userRes = await db.query('SELECT * FROM users WHERE email ILIKE $1', [email]);
+        // Case-insensitive email search with employee status
+        const userRes = await db.query(`
+            SELECT u.*, e.employment_status 
+            FROM users u 
+            LEFT JOIN employees e ON u.id = e.user_id 
+            WHERE u.email ILIKE $1
+        `, [email]);
 
         if (userRes.rows.length === 0) {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
         const user = userRes.rows[0];
-        console.log(`[AUTH] User found: ${user.email}, Role: ${user.role}`);
+        console.log(`[AUTH] User found: ${user.email}, Role: ${user.role}, Status: ${user.employment_status}`);
+
+        // Block login if deactivated or employee is Resigned/Terminated/Inactive
+        if (user.is_active === false || (user.employment_status && ['Resigned', 'Terminated', 'Inactive'].includes(user.employment_status))) {
+            return res.status(403).json({ 
+                message: 'Your account has been deactivated as your employment has ended. Please contact HR.' 
+            });
+        }
 
         const authStart = Date.now();
         const isMatch = await bcrypt.compare(password, user.password);

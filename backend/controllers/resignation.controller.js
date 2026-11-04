@@ -129,15 +129,23 @@ const updateResignationStatus = async (req, res) => {
             [status, exit_interview_notes, clearance_it, clearance_finance, clearance_hr, req.user.id, resignationId]
         );
 
-        // Synchronize employee employment_status
+        // Synchronize employee employment_status & user account deactivation
         if (status === 'Approved' || status === 'Completed') {
             await db.query(
                 `UPDATE employees SET employment_status = 'Resigned' WHERE id = $1`,
                 [resignation.employee_id]
             );
+            await db.query(
+                `UPDATE users u SET is_active = false FROM employees e WHERE u.id = e.user_id AND e.id = $1`,
+                [resignation.employee_id]
+            );
         } else if (status === 'Rejected') {
             await db.query(
                 `UPDATE employees SET employment_status = 'Active' WHERE id = $1 AND employment_status = 'Resigned'`,
+                [resignation.employee_id]
+            );
+            await db.query(
+                `UPDATE users u SET is_active = true FROM employees e WHERE u.id = e.user_id AND e.id = $1`,
                 [resignation.employee_id]
             );
         }
