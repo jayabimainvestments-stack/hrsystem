@@ -635,5 +635,8 @@ module.exports = {
     updateEmployee,
     promoteEmployee,
     getMyProfile,
-    getSalaryStructure
+    getSalaryStructure,
+    confirmProbation,
+    extendProbation,
+    getEmployeeHistory
 };
