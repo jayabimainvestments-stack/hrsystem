@@ -29,22 +29,22 @@ const getManualDeductions = async (req, res) => {
                 u.name as employee_name,
                 ad.id as deduction_id,
                 -- Use existing saved value if present, otherwise use calculated auto-value
-                COALESCE(ad.deduct_days, calc.absent_days, 0) as deduct_days,
-                COALESCE(ad.deduct_hours, calc.late_hours, 0) as deduct_hours,
+                ROUND(COALESCE(ad.deduct_days, calc.absent_days, 0)::numeric, 2) as deduct_days,
+                ROUND(COALESCE(ad.deduct_hours, calc.late_hours, 0)::numeric, 2) as deduct_hours,
                 -- Dynamic Rates
                 CASE WHEN $2 > 0 THEN $2 ELSE (COALESCE(sal.basic_salary, 0) / 30.0) * $4 END as effective_day_rate,
                 CASE WHEN $3 > 0 THEN $3 ELSE (COALESCE(sal.basic_salary, 0) / 240.0) END as effective_hour_rate,
                 -- Use saved amount or calculate based on policy
                 COALESCE(ad.total_amount, 
-                        (COALESCE(calc.absent_days, 0) * (CASE WHEN $2 > 0 THEN $2 ELSE (COALESCE(sal.basic_salary, 0) / 30.0) * $4 END)) + 
-                        (COALESCE(calc.late_hours, 0) * (CASE WHEN $3 > 0 THEN $3 ELSE (COALESCE(sal.basic_salary, 0) / 240.0) END))
+                        (ROUND(COALESCE(calc.absent_days, 0)::numeric, 2) * (CASE WHEN $2 > 0 THEN $2 ELSE (COALESCE(sal.basic_salary, 0) / 30.0) * $4 END)) + 
+                        (ROUND(COALESCE(calc.late_hours, 0)::numeric, 2) * (CASE WHEN $3 > 0 THEN $3 ELSE (COALESCE(sal.basic_salary, 0) / 240.0) END))
                 ) as total_amount,
                 ad.status,
                 ad.created_by,
                 ad.approved_by_1,
                 -- Return calculated values for reference
-                COALESCE(calc.absent_days, 0) as calc_absent_days,
-                COALESCE(calc.late_hours, 0) as calc_late_hours,
+                ROUND(COALESCE(calc.absent_days, 0)::numeric, 2) as calc_absent_days,
+                ROUND(COALESCE(calc.late_hours, 0)::numeric, 2) as calc_late_hours,
                 breakdown.list as details
             FROM employees e
             JOIN users u ON e.user_id = u.id
@@ -70,12 +70,21 @@ const getManualDeductions = async (req, res) => {
                     GROUP BY employee_id
                 ) att ON e.id = att.employee_id
                 LEFT JOIN (
-                    SELECT user_id,
-                           SUM(unpaid_days) as unpaid_days,
-                           SUM(short_leave_hours) as short_leave_hours
-                    FROM leaves
-                    WHERE status = 'Approved' AND start_date >= $5::date AND start_date <= $6::date
-                    GROUP BY user_id
+                    SELECT l_days.user_id,
+                           SUM(CASE WHEN COALESCE(att.status, '') IN ('Present', 'Late') THEN 0 ELSE day_unpaid_days END) as unpaid_days,
+                           SUM(CASE WHEN COALESCE(att.status, '') IN ('Present', 'Late') THEN 0 ELSE day_short_leave_hours END) as short_leave_hours
+                    FROM (
+                        SELECT l.user_id,
+                               gs.date::date as date,
+                               (l.unpaid_days::numeric / l.no_of_days::numeric) as day_unpaid_days,
+                               (l.short_leave_hours::numeric / l.no_of_days::numeric) as day_short_leave_hours
+                        FROM leaves l
+                        CROSS JOIN LATERAL generate_series(l.start_date::timestamp, l.end_date::timestamp, '1 day'::interval) gs(date)
+                        WHERE l.status = 'Approved' AND l.start_date >= $5::date AND l.start_date <= $6::date
+                    ) l_days
+                    LEFT JOIN employees emp ON emp.user_id = l_days.user_id
+                    LEFT JOIN attendance att ON att.employee_id = emp.id AND att.date = l_days.date
+                    GROUP BY l_days.user_id
                 ) l ON e.user_id = l.user_id
             ) calc ON e.id = calc.employee_id
             LEFT JOIN LATERAL (
@@ -97,7 +106,7 @@ const getManualDeductions = async (req, res) => {
                     WHERE employee_id = e.id AND date >= $5::date AND date <= $6::date AND late_minutes > 0 AND status != 'Incomplete' AND status != 'Absent'
                     UNION ALL
                     -- Short Leave Hours
-                    SELECT date::text as date, 'Short Leave' as reason, CAST(short_leave_hours AS text) as value, 'hours' as unit
+                    SELECT date::text as date, 'Short Leave' as reason, ROUND(short_leave_hours::numeric, 2)::text as value, 'hours' as unit
                     FROM attendance
                     WHERE employee_id = e.id AND date >= $5::date AND date <= $6::date AND short_leave_hours > 0 AND date < CURRENT_DATE
                     UNION ALL
@@ -105,8 +114,18 @@ const getManualDeductions = async (req, res) => {
                     SELECT gs.date::date::text as date, 'Unpaid ' || l.leave_type as reason, '1.0' as value, 'day' as unit
                     FROM leaves l
                     CROSS JOIN LATERAL generate_series(l.start_date::timestamp, l.end_date::timestamp, '1 day'::interval) gs(date)
+                    LEFT JOIN attendance att ON att.employee_id = e.id AND att.date = gs.date::date
                     WHERE l.user_id = e.user_id AND l.status = 'Approved' AND l.is_unpaid = TRUE
                     AND gs.date::date >= $5::date AND gs.date::date <= $6::date
+                    AND COALESCE(att.status, '') NOT IN ('Present', 'Late')
+                    UNION ALL
+                    -- Short Leaves from Leaves table
+                    SELECT l.start_date::date::text as date, 'Approved ' || l.leave_type as reason, ROUND(l.short_leave_hours::numeric, 2)::text as value, 'hours' as unit
+                    FROM leaves l
+                    LEFT JOIN attendance att ON att.employee_id = e.id AND att.date = l.start_date::date
+                    WHERE l.user_id = e.user_id AND l.status = 'Approved' AND l.short_leave_hours > 0
+                    AND l.start_date::date >= $5::date AND l.start_date::date <= $6::date
+                    AND COALESCE(att.status, '') NOT IN ('Present', 'Late')
                 ) d
             ) breakdown ON TRUE
             WHERE e.employment_status = 'Active' OR e.employment_status IS NULL

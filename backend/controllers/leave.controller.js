@@ -16,6 +16,9 @@ const applyForLeave = async (req, res) => {
     try {
         const start = new Date(start_date);
         const end = new Date(end_date);
+        if (start > end) {
+            return res.status(400).json({ message: 'Start date cannot be after end date' });
+        }
         const diffTime = Math.abs(end - start);
         let noOfDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
@@ -331,8 +334,6 @@ const updateLeaveStatus = async (req, res) => {
                             WHERE id = $1
                         `, [existingId]);
                     }
-
-                    d.setUTCDate(d.getUTCDate() + 1);
                 }
 
                 console.log(`Materialized Approved Leave into attendance table for Employee: ${employeeId}, Dates: ${leave.start_date} to ${leave.end_date}`);

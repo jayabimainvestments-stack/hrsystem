@@ -356,16 +356,60 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
                     }
                 }
 
-                // 2. Clear any 'Absent' records for these dates
+                // 2. Materialize approved leave in the attendance table
                 const empRes = await client.query('SELECT id FROM employees WHERE user_id = $1', [leave.user_id]);
                 if (empRes.rows.length > 0) {
                     const employeeId = empRes.rows[0].id;
-                    await client.query(`
-                        DELETE FROM attendance 
-                        WHERE employee_id = $1 
-                        AND date >= $2::date AND date <= $3::date 
-                        AND status = 'Absent'
-                    `, [employeeId, leave.start_date, leave.end_date]);
+
+                    const startDateStr = typeof leave.start_date === 'string'
+                        ? leave.start_date.split('T')[0]
+                        : leave.start_date.toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
+                    const endDateStr = typeof leave.end_date === 'string'
+                        ? leave.end_date.split('T')[0]
+                        : leave.end_date.toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
+
+                    const dateRange = [];
+                    let cur = new Date(startDateStr + 'T12:00:00Z');
+                    const endCur = new Date(endDateStr + 'T12:00:00Z');
+                    while (cur <= endCur) {
+                        dateRange.push(cur.toISOString().split('T')[0]);
+                        cur.setUTCDate(cur.getUTCDate() + 1);
+                    }
+
+                    for (const dateStr of dateRange) {
+                        const existingAtt = await client.query(
+                            'SELECT id, status FROM attendance WHERE employee_id = $1 AND date = $2',
+                            [employeeId, dateStr]
+                        );
+
+                        let shouldInsert = false;
+                        let shouldUpdate = false;
+                        let existingId = null;
+
+                        if (existingAtt.rows.length === 0) {
+                            shouldInsert = true;
+                        } else {
+                            const existingRecord = existingAtt.rows[0];
+                            existingId = existingRecord.id;
+                            if (existingRecord.status === 'Absent' || existingRecord.status === 'Leave' || existingRecord.status === 'Incomplete') {
+                                shouldUpdate = true;
+                            }
+                        }
+
+                        if (shouldInsert) {
+                            await client.query(`
+                                INSERT INTO attendance (employee_id, date, status, source)
+                                VALUES ($1, $2, 'Leave', 'Authorized Leave')
+                            `, [employeeId, dateStr]);
+                        } else if (shouldUpdate) {
+                            await client.query(`
+                                UPDATE attendance 
+                                SET status = 'Leave', source = 'Authorized Leave'
+                                WHERE id = $1
+                            `, [existingId]);
+                        }
+                    }
+                    console.log(`[GOVERNANCE] Materialized Approved Leave into attendance table for Employee: ${employeeId}, Dates: ${startDateStr} to ${endDateStr}`);
                 }
             }
 
@@ -442,6 +486,15 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
                 'UPDATE resignations SET status = $1, approved_by = $2, rejection_reason = $3, updated_at = NOW() WHERE id = $4',
                 [status, req.user.id, action === 'Reject' ? approval_reason : null, id]
             );
+            if (action === 'Approve') {
+                const resRow = await client.query('SELECT employee_id FROM resignations WHERE id = $1', [id]);
+                if (resRow.rows.length > 0) {
+                    await client.query(
+                        "UPDATE employees SET employment_status = 'Resigned' WHERE id = $1",
+                        [resRow.rows[0].employee_id]
+                    );
+                }
+            }
         }
         else if (type === 'LOAN_PAYMENT') {
             // id here is the loan_payments.id (the pending manual payment)

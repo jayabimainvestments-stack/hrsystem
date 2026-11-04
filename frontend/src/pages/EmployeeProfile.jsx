@@ -57,19 +57,20 @@ const EmployeeProfile = ({ isMe }) => {
         }
     };
 
+    const fetchEmployee = async () => {
+        try {
+            const endpoint = isMe ? '/employees/me' : `/employees/${id}`;
+            const { data } = await api.get(endpoint);
+            setEmployee(data);
+            setPromoteData(prev => ({ ...prev, new_department: data.department, new_designation: data.designation }));
+        } catch (error) {
+            console.error("Error fetching employee", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const fetchEmployee = async () => {
-            try {
-                const endpoint = isMe ? '/employees/me' : `/employees/${id}`;
-                const { data } = await api.get(endpoint);
-                setEmployee(data);
-                setPromoteData(prev => ({ ...prev, new_department: data.department, new_designation: data.designation }));
-            } catch (error) {
-                console.error("Error fetching employee", error);
-            } finally {
-                setLoading(false);
-            }
-        };
         fetchEmployee();
     }, [id, isMe]);
 
@@ -210,8 +211,8 @@ const EmployeeProfile = ({ isMe }) => {
                                     <span className="bg-slate-50 text-slate-600 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider border border-slate-200 flex items-center gap-1.5">
                                         <Building2 size={14} /> {employee.department || 'General'}
                                     </span>
-                                    <span className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider border flex items-center gap-1.5 ${employee.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
-                                        {employee.status || 'Active'}
+                                    <span className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider border flex items-center gap-1.5 ${(employee.employment_status || employee.status || 'Active') === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
+                                        {employee.employment_status || employee.status || 'Active'}
                                     </span>
                                 </div>
                             </div>
@@ -423,7 +424,7 @@ const EmployeeProfile = ({ isMe }) => {
                 ) : activeTab === 'onboarding' ? (
                     <OnboardingTab employeeId={id || employee.id} />
                 ) : activeTab === 'exit' ? (
-                    <ExitTab employeeId={id || employee.id} />
+                    <ExitTab employeeId={id || employee.id} onStatusChange={fetchEmployee} />
                 ) : activeTab === 'salary' ? (
                     <EmployeeSalaryStructure employeeId={id || employee.id} />
                 ) : activeTab === 'performance' ? (
