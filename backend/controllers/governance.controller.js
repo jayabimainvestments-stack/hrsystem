@@ -88,17 +88,18 @@ const getPendingChanges = async (req, res) => {
             WHERE f.status = 'Pending'
         `);
 
-        // 5. Resignations
+        // 5. Resignations (with Maker-Checker requester info)
         const resignationRequests = await db.query(`
             SELECT 
                 r.id, 'RESIGNATION' as type, r.employee_id as entity_id, 'RESIGNATION_NOTICE' as field_name,
                 NULL as old_value,
                 json_build_object('reason', r.reason, 'notice_date', r.submitted_date, 'last_working_day', r.desired_last_day) as new_value,
-                u.id as requested_by, r.reason, r.status,
-                u.name as requester_name, u.name as target_name, r.created_at as updated_at
+                COALESCE(r.requested_by, e.user_id) as requested_by, r.reason, r.status,
+                COALESCE(ru.name, u.name) as requester_name, u.name as target_name, r.created_at as updated_at
             FROM resignations r
             JOIN employees e ON r.employee_id = e.id
             LEFT JOIN users u ON e.user_id = u.id
+            LEFT JOIN users ru ON r.requested_by = ru.id
             WHERE r.status = 'Pending'
         `);
 
@@ -180,7 +181,16 @@ const actOnPendingChange = async (req, res) => { // Renamed to match export
         // Admin role can override segregation — needed for small teams where Admin is also HR
         const isAdmin = req.user.role === 'Admin';
         const isRequestFromSelf = async (id, type) => {
-            if (isAdmin) return false; // Admin can approve any request
+            // Maker-Checker Rule for Resignations / Employee Exits:
+            // Even an Admin cannot approve an exit request they initiated themselves!
+            if (type === 'RESIGNATION') {
+                const res = await client.query('SELECT requested_by FROM resignations WHERE id = $1', [id]);
+                if (res.rows.length > 0 && res.rows[0].requested_by) {
+                    return String(res.rows[0].requested_by) === String(req.user.id);
+                }
+                return false;
+            }
+            if (isAdmin) return false; // Admin can approve other routine requests
             if (type === 'SALARY' || type === 'ATTENDANCE') {
                 const res = await client.query('SELECT requested_by FROM pending_changes WHERE id = $1', [id]);
                 return res.rows.length > 0 && String(res.rows[0].requested_by) === String(req.user.id);

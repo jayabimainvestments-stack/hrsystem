@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, FileText, CheckCircle2, Circle, AlertTriangle, Save, Clock, Trash2, Plus, RotateCcw } from 'lucide-react';
+import { LogOut, FileText, CheckCircle2, Circle, AlertTriangle, Save, Clock, Trash2, Plus, RotateCcw, ShieldCheck, ArrowRight } from 'lucide-react';
 
 const ExitTab = ({ employeeId, onStatusChange }) => {
     const [resignation, setResignation] = useState(null);
@@ -39,7 +39,7 @@ const ExitTab = ({ employeeId, onStatusChange }) => {
                 reason,
                 desired_last_day: lastDay
             });
-            alert('Resignation request submitted successfully');
+            alert('Exit request initiated successfully. Awaiting secondary administrator review (Maker-Checker policy).');
             await fetchResignation();
             if (onStatusChange) onStatusChange();
         } catch (error) {
@@ -50,7 +50,7 @@ const ExitTab = ({ employeeId, onStatusChange }) => {
     const handleUpdateStatus = async (status) => {
         if (!resignation) return;
         const confirmMsg = status === 'Approved' 
-            ? 'Are you sure you want to APPROVE this resignation? The employee will be marked as RESIGNED in the system.' 
+            ? 'Are you sure you want to AUTHORIZE and APPROVE this exit? The employee will be marked as RESIGNED and their account access will be deactivated.' 
             : `Are you sure you want to set status to ${status}?`;
         if (!window.confirm(confirmMsg)) return;
 
@@ -70,6 +70,7 @@ const ExitTab = ({ employeeId, onStatusChange }) => {
     if (loading) return <div className="p-8 text-center text-slate-400 italic">Loading exit details...</div>;
 
     const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'HR Manager';
+    const isSelfInitiated = resignation && resignation.requested_by && String(resignation.requested_by) === String(currentUser.id);
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
@@ -82,8 +83,13 @@ const ExitTab = ({ employeeId, onStatusChange }) => {
                             <LogOut className="text-red-400" size={32} />
                         </div>
                         <div>
-                            <h3 className="text-2xl font-black uppercase tracking-tight">Resignation & Exit</h3>
-                            <p className="text-slate-400 font-medium">Offboarding and exit management</p>
+                            <div className="flex items-center gap-3">
+                                <h3 className="text-2xl font-black uppercase tracking-tight">Resignation & Exit</h3>
+                                <span className="bg-white/10 text-slate-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 border border-white/10">
+                                    <ShieldCheck size={12} className="text-emerald-400" /> Maker-Checker Enabled
+                                </span>
+                            </div>
+                            <p className="text-slate-400 font-medium">Offboarding, clearance and dual-authorization exit management</p>
                         </div>
                     </div>
                     {resignation && (
@@ -110,9 +116,12 @@ const ExitTab = ({ employeeId, onStatusChange }) => {
                 <div className="lg:col-span-2 space-y-8">
                     {!resignation ? (
                         <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
-                            <h4 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+                            <h4 className="text-lg font-black text-slate-800 mb-2 flex items-center gap-2">
                                 <FileText className="text-blue-600" size={24} /> Initiate Employee Exit / Resignation
                             </h4>
+                            <p className="text-xs text-slate-500 font-medium mb-6">
+                                Submitting this request will queue it for dual approval. A secondary administrator must review and approve before final termination.
+                            </p>
                             <form onSubmit={handleSubmit} className="space-y-6">
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Proposed Effective Date / Last Working Day</label>
@@ -134,14 +143,24 @@ const ExitTab = ({ employeeId, onStatusChange }) => {
                                         required
                                     />
                                 </div>
-                                <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all">Submit Exit Record</button>
+                                <button type="submit" className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
+                                    <span>Initiate Exit Request (Maker)</span>
+                                    <ArrowRight size={16} />
+                                </button>
                             </form>
                         </div>
                     ) : (
                         <div className="space-y-8">
                             <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
                                 <div className="flex justify-between items-center mb-6">
-                                    <h4 className="text-sm font-black uppercase tracking-widest text-slate-400 font-bold">Resignation Context</h4>
+                                    <div>
+                                        <h4 className="text-sm font-black uppercase tracking-widest text-slate-400 font-bold">Resignation Context</h4>
+                                        {resignation.requester_name && (
+                                            <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                                Initiated by: <span className="font-bold text-slate-700">{resignation.requester_name}</span>
+                                            </p>
+                                        )}
+                                    </div>
                                     <span className={`text-xs font-black uppercase px-3 py-1 rounded-full ${
                                         resignation.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' :
                                         resignation.status === 'Rejected' ? 'bg-red-50 text-red-700' :
@@ -154,10 +173,45 @@ const ExitTab = ({ employeeId, onStatusChange }) => {
                                     "{resignation.reason}"
                                 </div>
 
+                                {/* Dual Authorization Controls */}
                                 {isAdmin && resignation.status === 'Pending' && (
-                                    <div className="flex gap-4 p-2 bg-slate-50 rounded-[2rem]">
-                                        <button onClick={() => handleUpdateStatus('Approved')} className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-emerald-100 font-bold hover:bg-emerald-700 transition-all">Approve & Mark Resigned</button>
-                                        <button onClick={() => handleUpdateStatus('Rejected')} className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-red-100 font-bold hover:bg-red-700 transition-all">Reject</button>
+                                    <div>
+                                        {isSelfInitiated ? (
+                                            <div className="p-6 bg-amber-50 rounded-2xl border border-amber-200/80 text-amber-900 space-y-3">
+                                                <div className="flex items-center gap-2 font-black text-sm text-amber-800">
+                                                    <Clock className="text-amber-600" size={18} />
+                                                    <span>Awaiting Secondary Authorization (Maker-Checker Policy)</span>
+                                                </div>
+                                                <p className="text-xs font-medium text-amber-700 leading-relaxed">
+                                                    You initiated this exit record. Under the institutional governance policy, a <strong>second authorized administrator</strong> (e.g. Managing Director / Senior Admin) must review and approve this exit request.
+                                                </p>
+                                                <div className="pt-2">
+                                                    <a href="/governance" className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-900 underline hover:text-amber-950">
+                                                        <span>View in Governance Dashboard</span> &rarr;
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                <div className="p-4 bg-blue-50 rounded-2xl border border-blue-200 text-blue-900 flex items-center justify-between">
+                                                    <div>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-500">Initiated By (Maker)</p>
+                                                        <p className="text-xs font-bold">{resignation.requester_name || 'Administrator'}</p>
+                                                    </div>
+                                                    <span className="text-[10px] font-black uppercase px-2.5 py-1 bg-blue-200 text-blue-900 rounded-full">
+                                                        Secondary Reviewer (Checker)
+                                                    </span>
+                                                </div>
+                                                <div className="flex gap-4 p-2 bg-slate-50 rounded-[2rem]">
+                                                    <button onClick={() => handleUpdateStatus('Approved')} className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-emerald-100 font-bold hover:bg-emerald-700 transition-all">
+                                                        Approve & Authorize Exit (Checker)
+                                                    </button>
+                                                    <button onClick={() => handleUpdateStatus('Rejected')} className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-red-100 font-bold hover:bg-red-700 transition-all">
+                                                        Reject
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 

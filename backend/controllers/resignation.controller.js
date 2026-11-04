@@ -27,8 +27,8 @@ const submitResignation = async (req, res) => {
         }
 
         const result = await db.query(
-            'INSERT INTO resignations (employee_id, reason, desired_last_day) VALUES ($1, $2, $3) RETURNING *',
-            [targetEmployeeId, reason, desired_last_day]
+            'INSERT INTO resignations (employee_id, reason, desired_last_day, requested_by) VALUES ($1, $2, $3, $4) RETURNING *',
+            [targetEmployeeId, reason, desired_last_day, req.user.id]
         );
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -42,10 +42,11 @@ const submitResignation = async (req, res) => {
 const getResignations = async (req, res) => {
     try {
         let query = `
-            SELECT r.*, e.id as emp_id, u.name, u.email 
+            SELECT r.*, e.id as emp_id, u.name, u.email, ru.name as requester_name 
             FROM resignations r
             JOIN employees e ON r.employee_id = e.id
             JOIN users u ON e.user_id = u.id
+            LEFT JOIN users ru ON r.requested_by = ru.id
         `;
         let params = [];
 
@@ -71,10 +72,11 @@ const getEmployeeResignation = async (req, res) => {
     try {
         const { employeeId } = req.params;
         const result = await db.query(
-            `SELECT r.*, e.id as emp_id, u.name, u.email 
+            `SELECT r.*, e.id as emp_id, u.name, u.email, ru.name as requester_name 
              FROM resignations r
              JOIN employees e ON r.employee_id = e.id
              JOIN users u ON e.user_id = u.id
+             LEFT JOIN users ru ON r.requested_by = ru.id
              WHERE r.employee_id = $1
              ORDER BY r.created_at DESC LIMIT 1`,
             [employeeId]
@@ -101,6 +103,14 @@ const updateResignationStatus = async (req, res) => {
         if (current.rows.length === 0) return res.status(404).json({ message: 'Resignation record not found' });
 
         const resignation = current.rows[0];
+
+        // Maker-Checker / Dual Authorization Policy:
+        // The administrator who initiated this exit request cannot approve it themselves!
+        if (status === 'Approved' && resignation.requested_by && String(resignation.requested_by) === String(req.user.id)) {
+            return res.status(403).json({
+                message: 'Dual Authorization Policy: You initiated this exit request. A second authorized administrator must review and approve it.'
+            });
+        }
 
         // Enforce Clearance logic for 'Completed' status
         if (status === 'Completed') {
